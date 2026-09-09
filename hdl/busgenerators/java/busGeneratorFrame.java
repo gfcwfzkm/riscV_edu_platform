@@ -35,6 +35,14 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.xml.sax.SAXException;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorFrame extends JFrame implements ActionListener {
 
   private LinkedList<busGeneratorObject> busComponents;

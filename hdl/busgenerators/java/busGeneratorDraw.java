@@ -11,6 +11,14 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorDraw extends JPanel implements MouseListener, ActionListener {
   private busGeneratorFrame parent;
   private busGeneratorObject selectedItem = null;

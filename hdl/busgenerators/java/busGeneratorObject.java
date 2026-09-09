@@ -18,6 +18,14 @@ import javax.swing.JTextField;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorObject implements ActionListener {
   private boolean isMaster;
   private long slaveBaseAddress;

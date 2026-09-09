@@ -3,6 +3,14 @@ import javax.swing.JMenuItem;
 import javax.swing.JMenu;
 import java.awt.event.ActionListener;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorMenu extends JMenuBar {
   
   public static String fileExitAction = "exit";

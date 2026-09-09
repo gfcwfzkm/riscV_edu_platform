@@ -1,5 +1,13 @@
 import javax.swing.JFrame;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorMain {
   public static void main(String[] args) {
     JFrame frame = new busGeneratorFrame();

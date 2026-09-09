@@ -1,6 +1,14 @@
 import java.util.ArrayList;
 import java.util.TreeMap;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorWishboneSignals {
   public static String DataBitsGeneric = "DataBits";
   public static String AddressBitsGeneric = "AddrBits";

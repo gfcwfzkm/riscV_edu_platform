@@ -14,6 +14,14 @@ import java.awt.event.ActionEvent;
 import java.io.FileWriter;
 import java.io.IOException;
 
+/*
+ * Whisbone bus generator
+ * Copyright by T.J.H. Kluter
+ *
+ * https://https://github.com/logisim-evolution/riscV_edu_platform
+ * 
+ */
+
 public class busGeneratorMemmap extends JPanel {
   private busGeneratorFrame parent;
   private JTextPane memMapPane = new JTextPane();
