@@ -621,7 +621,7 @@ begin
 			sbreadondata_reg <= '0';
 			sbaccess_reg <= (others => '0');
 			sbautoincrement_reg <= '0';
-			sberror_reg <= (others => '0');
+			sberror_reg <= SBERROR_OK;
 			sb_current_is_write_reg <= '0';
 		elsif rising_edge(clk) then
 			if dmactive_reg = '0' then
@@ -631,7 +631,7 @@ begin
 				sbreadondata_reg <= '0';
 				sbaccess_reg <= (others => '0');
 				sbautoincrement_reg <= '0';
-				sberror_reg <= (others => '0');
+				sberror_reg <= SBERROR_OK;
 				sb_current_is_write_reg <= '0';
 			elsif HAVE_SBA = 1 then
 				if dmi_write = '1' and dmi_regaddr = ADDR_SBCS then
@@ -1007,7 +1007,7 @@ begin
 
 	-- DMI read data mux
 	-- L802-L898
-	-- TODO dmi_prdata is instantiated as a latch here??
+	-- TODO dmi_prdata_reg is instantiated as a latch here??
 	dmi_read_mux_proc : process(all)
 		variable v_allnonexistent : std_logic;
 		variable v_anynonexistent : std_logic;
@@ -1038,10 +1038,10 @@ begin
 		-- 3. Multiplex register data
 		case dmi_regaddr is
 			when ADDR_DATA0 =>        
-				dmi_prdata <= abstract_data0_reg;
+				dmi_prdata_reg <= abstract_data0_reg;
 
 			when ADDR_DMCONTROL =>    
-				dmi_prdata <= '0' &                                    -- haltreq is a W-only field
+				dmi_prdata_reg <= '0' &                                    -- haltreq is a W-only field
 							  '0' &                                    -- resumereq is a W1 field
 							  status_any(dmcontrol_hartreset_reg) &
 							  '0' &                                    -- ackhavereset is a W1 field
@@ -1056,7 +1056,7 @@ begin
 							  dmactive_reg;
 
 			when ADDR_DMSTATUS =>     
-				dmi_prdata <= "000000000" &                            -- reserved
+				dmi_prdata_reg <= "000000000" &                            -- reserved
 							  '1' &                                    -- impebreak = 1
 							  "00" &                                   -- reserved
 							  status_all_any(dmstatus_havereset_reg) &     -- allhavereset, anyhavereset (2 bits)
@@ -1073,7 +1073,7 @@ begin
 							  x"2";                                    -- version = 2 (4 bits)
 
 			when ADDR_HARTINFO =>     
-				dmi_prdata <= x"00" &                                  -- reserved
+				dmi_prdata_reg <= x"00" &                                  -- reserved
 							  x"0" &                                   -- nscratch = 0
 							  "000" &                                  -- reserved
 							  '0' &                                    -- dataccess = 0
@@ -1081,22 +1081,22 @@ begin
 							  x"bff";                                  -- dataaddr
 
 			when ADDR_HALTSUM0 =>     
-				dmi_prdata <= (XLEN - N_HARTS - 1 downto 0 => '0') &
+				dmi_prdata_reg <= (XLEN - N_HARTS - 1 downto 0 => '0') &
 							  (hart_halted and hart_available);
 
 			when ADDR_HALTSUM1 =>     
-				dmi_prdata <= (XLEN - 2 downto 0 => '0') &
+				dmi_prdata_reg <= (XLEN - 2 downto 0 => '0') &
 							  (or (hart_halted and hart_available));   -- VHDL-2008 unary OR
 
 			when ADDR_HAWINDOWSEL =>  
-				dmi_prdata <= x"00000000";
+				dmi_prdata_reg <= x"00000000";
 
 			when ADDR_HAWINDOW =>     
-				dmi_prdata <= (31 - N_HARTS downto 0 => '0') &
+				dmi_prdata_reg <= (31 - N_HARTS downto 0 => '0') &
 							  hart_array_mask_reg;
 
 			when ADDR_ABSTRACTCS =>   
-				dmi_prdata <= "000" &                                  -- reserved
+				dmi_prdata_reg <= "000" &                                  -- reserved
 							  "00010" &                                -- progbufsize = 2
 							  "00000000000" &                          -- reserved
 							  abstractcs_busy &
@@ -1106,13 +1106,13 @@ begin
 							  x"1";                                    -- datacount = 1
 
 			when ADDR_ABSTRACTAUTO => 
-				dmi_prdata <= "00000000000000" &
+				dmi_prdata_reg <= "00000000000000" &
 							  abstractauto_autoexecprogbuf_reg &
 							  (14 downto 0 => '0') &
 							  abstractauto_autoexecdata_reg;
 
 			when ADDR_SBCS =>          
-				dmi_prdata <= ( "001" &                                -- version = 1
+				dmi_prdata_reg <= ( "001" &                                -- version = 1
 								"000000" &
 								sbbusyerror_reg &
 								sbbusy_reg &
@@ -1126,36 +1126,38 @@ begin
 							  ) and v_sba_mask;
 
 			when ADDR_SBDATA0 =>      
-				dmi_prdata <= sbdata_reg and v_sba_mask;
+				dmi_prdata_reg <= sbdata_reg and v_sba_mask;
 				
 			when ADDR_SBADDRESS0 =>   
-				dmi_prdata <= sbaddress_reg and v_sba_mask;
+				dmi_prdata_reg <= sbaddress_reg and v_sba_mask;
 				
 			when ADDR_CONFSTRPTR0 =>  
-				dmi_prdata <= x"4c296328";
+				dmi_prdata_reg <= x"4c296328";
 				
 			when ADDR_CONFSTRPTR1 =>  
-				dmi_prdata <= x"20656b75";
+				dmi_prdata_reg <= x"20656b75";
 				
 			when ADDR_CONFSTRPTR2 =>  
-				dmi_prdata <= x"6e657257";
+				dmi_prdata_reg <= x"6e657257";
 				
 			when ADDR_CONFSTRPTR3 =>  
-				dmi_prdata <= x"31322720";
+				dmi_prdata_reg <= x"31322720";
 				
 			when ADDR_NEXTDM =>       
-				dmi_prdata <= NEXT_DM_ADDR;
+				dmi_prdata_reg <= NEXT_DM_ADDR;
 				
 			when ADDR_PROGBUF0 =>     
-				dmi_prdata <= progbuf0_reg;
+				dmi_prdata_reg <= progbuf0_reg;
 				
 			when ADDR_PROGBUF1 =>     
-				dmi_prdata <= progbuf1_reg;
+				dmi_prdata_reg <= progbuf1_reg;
 				
 			when others =>           
-				dmi_prdata <= (others => '0');
+				dmi_prdata_reg <= (others => '0');
 				
 		end case;
 	end process dmi_read_mux_proc;
+
+	dmi_prdata <= dmi_prdata_reg;
 
 end architecture rtl;

@@ -129,7 +129,6 @@ architecture rtl of hazard3_apb_async_bridge is
 	signal dst_psel_reg    : std_logic := '0';
 	signal dst_penable_reg : std_logic := '0';
 	signal dst_bus_finish  : std_logic;
-	signal dmi_regaddr     : std_logic_vector(6 downto 0);
 
 
 	attribute keep of src_req_reg                 : signal is true;

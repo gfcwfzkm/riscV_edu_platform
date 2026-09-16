@@ -146,6 +146,16 @@ check_assert_reset_pair hazard3_ecp5_jtag_dtm hazard3_ecp5_jtag_dtm \
     "$repo_root/verification/ecp5_jtagg_blackbox.v"
 or set failed 1
 
+set -a dtm_vhdl "$repo_root/hdl/modules/debug/vhdl/cdc/hazard3_reset_sync.vhdl $repo_root/hdl/modules/debug/vhdl/dtm/hazard3_ecp5_jtag_dtm.vhdl $repo_root/hdl/modules/debug/vhdl/dm/hazard3_dm.vhdl"
+set -a dtm_verilog "$repo_root/hdl/modules/debug/verilog/cdc/hazard3_reset_sync.v $repo_root/hdl/modules/debug/verilog/dtm/hazard3_ecp5_jtag_dtm.v $repo_root/hdl/modules/debug/verilog/dm/hazard3_dm.v"
+
+check_assert_reset_pair hazard3_dm_ecp5 hazard3_dm_ecp5 \
+    "$dtm_vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_dm_ecp5.vhdl" \
+    "$dtm_verilog $repo_root/hdl/modules/debug/verilog/hazard3_dm_ecp5.v" \
+    "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+    "$repo_root/verification/ecp5_jtagg_blackbox.v"
+or set failed 1
+
 # We done! Print the result and return non-zero if a fail occurred somewhere
 printf '\nResults: %s\n' $results_file
 cat $results_file

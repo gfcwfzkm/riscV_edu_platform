@@ -1,0 +1,12 @@
+{
+    "name": "riscV_edu_platform",
+    "targets": {
+        "rtl": {
+            "libraryMapping": {
+                "": "work",
+                "verification/build": [],
+                "hdl/modules/debug/verilog": []
+            }
+        }
+    }
+}

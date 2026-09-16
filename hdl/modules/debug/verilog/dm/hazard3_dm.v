@@ -425,7 +425,7 @@ always @ (posedge clk or negedge rst_n) begin
         sbreadondata        <= 1'b0;
         sbaccess            <= 3'h0;
         sbautoincrement     <= 1'b0;
-        sberror             <= 3'h0;
+        sberror             <= SBERROR_OK;
         sb_current_is_write <= 1'b0;
     end else if (!dmactive) begin
         sbbusy              <= 1'b0;
@@ -434,7 +434,7 @@ always @ (posedge clk or negedge rst_n) begin
         sbreadondata        <= 1'b0;
         sbaccess            <= 3'h0;
         sbautoincrement     <= 1'b0;
-        sberror             <= 3'h0;
+        sberror             <= SBERROR_OK;
         sb_current_is_write <= 1'b0;
     end else if (HAVE_SBA) begin
         if (dmi_write && dmi_regaddr == ADDR_SBCS) begin
