@@ -418,11 +418,7 @@ localparam [31:0] MISA_VAL = {
 	|EXTENSION_E,      // RVE base ISA
 	1'b0,              // D, no
 	|EXTENSION_C,
-	&{                 // B is defined as ZbaZbbZbs
-		|EXTENSION_ZBA,
-		|EXTENSION_ZBB,
-		|EXTENSION_ZBS
-	},
+	1'b0,              // B is defined as ZbaZbbZbs, so no
 	|EXTENSION_A
 };
 
@@ -482,27 +478,10 @@ end
 endgenerate
 
 // ----------------------------------------------------------------------------
-// Custom sleep/power control CSRs
-
-reg msleep_sleeponblock;
-reg msleep_powerdown;
-reg msleep_deepsleep;
-
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		msleep_sleeponblock <= 1'b0;
-		msleep_powerdown    <= 1'b0;
-		msleep_deepsleep    <= 1'b0;
-	end else if (wen_m_mode && addr == MSLEEP) begin
-		msleep_sleeponblock <= wdata_update[2] && |EXTENSION_XH3POWER;
-		msleep_powerdown    <= wdata_update[1] && |EXTENSION_XH3POWER;
-		msleep_deepsleep    <= wdata_update[0] && |EXTENSION_XH3POWER;
-	end
-end
-
-assign pwr_allow_sleep_on_block = msleep_sleeponblock;
-assign pwr_allow_power_down = msleep_powerdown;
-assign pwr_allow_clkgate = msleep_deepsleep;
+// Custom sleep/power control CSRs - removed (XH3POWER)
+assign pwr_allow_sleep_on_block = 1'b0;
+assign pwr_allow_power_down = 1'b0;
+assign pwr_allow_clkgate = 1'b0;
 
 // ----------------------------------------------------------------------------
 // Custom identification CSRs
@@ -510,11 +489,11 @@ assign pwr_allow_clkgate = msleep_deepsleep;
 // Derive implied extensions:
 
 // B is a shorthand for ZbaZbbZbs:
-localparam [0:0]   EXTENSION_B     = |EXTENSION_ZBA && |EXTENSION_ZBB && |EXTENSION_ZBS;
+localparam [0:0]   EXTENSION_B     = 1'b0;
 // RV32I and RV32E are complementary:
 localparam [0:0]   EXTENSION_I     = ~|EXTENSION_E;
 // Zbkc is a subset of Zbc:
-localparam [0:0]   EXTENSION_ZBKC  = |EXTENSION_ZBC;
+localparam [0:0]   EXTENSION_ZBKC  = 1'b0;
 // Zca is (instructions-wise) a subset of C:
 localparam [0:0]   EXTENSION_ZCA   = |EXTENSION_C;
 // We have data-independent timing for all Zkt instructions except for mulh,
@@ -532,20 +511,20 @@ localparam [127:0] h3misa_standard_extensions =
 	({127'd0, |EXTENSION_E       } << 4 ) |
 	({127'd0, |EXTENSION_I       } << 8 ) |
 	({127'd0, |EXTENSION_M       } << 12) |
-	({127'd0, |EXTENSION_ZBA     } << 27) |
-	({127'd0, |EXTENSION_ZBB     } << 28) |
-	({127'd0, |EXTENSION_ZBC     } << 29) |
-	({127'd0, |EXTENSION_ZBKB    } << 30) |
-	({127'd0, |EXTENSION_ZBC     } << 31) |
-	({127'd0, |EXTENSION_ZBKX    } << 32) |
-	({127'd0, |EXTENSION_ZBS     } << 33) |
+	({127'd0, |1'b0              } << 27) |    // EXTENSION_ZBA
+	({127'd0, |1'b0              } << 28) |    // EXTENSION_ZBB
+	({127'd0, |1'b0              } << 29) |    // EXTENSION_ZBC
+	({127'd0, |1'b0              } << 30) |    // EXTENSION_ZBKB
+	({127'd0, |1'b0              } << 31) |    // EXTENSION_ZBC
+	({127'd0, |1'b0              } << 32) |    // EXTENSION_ZBKX
+	({127'd0, |1'b0              } << 33) |    // EXTENSION_ZBS
 	({127'd0, |EXTENSION_ZKT     } << 46) |
 	({127'd0, |EXTENSION_C       } << 66) |
-	({127'd0, |EXTENSION_ZCB     } << 67) |
-	({127'd0, |EXTENSION_ZILSD   } << 72) |
-	({127'd0, |EXTENSION_ZCLSD   } << 73) |
-	({127'd0, |EXTENSION_ZCMP    } << 74) |
-	({127'd0, |EXTENSION_ZIFENCEI} << 75) |
+	({127'd0, |1'b0	             } << 67) |    // EXTENSION_ZCB
+	({127'd0, |1'b0	             } << 72) |    // EXTENSION_ZILSD
+	({127'd0, |1'b0	             } << 73) |    // EXTENSION_ZCLSD
+	({127'd0, |1'b0	             } << 74) |    // EXTENSION_ZCMP
+	({127'd0, |1'b0	             } << 75) |    // EXTENSION_ZIFENCEI
 	({127'd0, |EXTENSION_ZMMUL   } << 76) |
 	128'd0;
 
@@ -555,8 +534,8 @@ localparam [255:0] h3misa_custom_extensions = {
 	32'd0,                                       // Reserved
 	32'd0,                                       // Reserved
 	32'd0,                                       // Reserved
-	32'h01_00_00_00 & {32{|EXTENSION_XH3BEXTM}}, // Xh3bextm
-	32'h01_00_00_00 & {32{|EXTENSION_XH3POWER}}, // Xh3power
+	32'h01_00_00_00 & {32{|1'b0}},               // Xh3bextm
+	32'h01_00_00_00 & {32{|1'b0}},               // Xh3power
 	32'h01_00_00_00 & {32{|EXTENSION_XH3PMPM}},  // Xh3pmpm
 	32'h01_00_00_00 & {32{|EXTENSION_XH3IRQ}},   // Xh3irq
 	32'h01_00_00_00 & {32{|CSR_M_MANDATORY}}     // Xh3misa
@@ -1248,16 +1227,6 @@ always @ (*) begin
 	MEICONTEXT: if (CSR_M_TRAP && EXTENSION_XH3IRQ) begin
 		decode_match = match_mrw;
 		rdata = irq_ctrl_rdata;
-	end
-
-	MSLEEP: if (EXTENSION_XH3POWER) begin
-		decode_match = match_mrw;
-		rdata = {
-			29'h0,
-			msleep_sleeponblock,
-			msleep_powerdown,
-			msleep_deepsleep
-		};
 	end
 
 	H3MISA: if (CSR_M_MANDATORY) begin
