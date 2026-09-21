@@ -41,68 +41,68 @@ parameter EXTENSION_C         = 1,
 
 // EXTENSION_E: Implement the RV32E base extension rather than RV32I. This
 // reduces the number of integer registers from 31 to 15.
-parameter EXTENSION_E         = 0,
+parameter EXTENSION_E         = 1,
 
 // EXTENSION_M: Support for hardware multiply/divide/modulo instructions
 parameter EXTENSION_M         = 1,
 
 // EXTENSION_ZBA: Support for Zba address generation instructions
-parameter EXTENSION_ZBA       = 0,
+//parameter EXTENSION_ZBA       = 0,
 
 // EXTENSION_ZBB: Support for Zbb basic bit manipulation instructions
-parameter EXTENSION_ZBB       = 0,
+//parameter EXTENSION_ZBB       = 0,
 
 // EXTENSION_ZBC: Support for Zbc carry-less multiplication instructions
-parameter EXTENSION_ZBC       = 0,
+//parameter EXTENSION_ZBC       = 0,
 
 // EXTENSION_ZBKB: Support for Zbkb basic bit manipulation for cryptography
 // Requires: Zbb. (This flag enables instructions in Zbkb which aren't in Zbb.)
-parameter EXTENSION_ZBKB      = 0,
+//parameter EXTENSION_ZBKB      = 0,
 
 // EXTENSION_ZBKX: support for Zbkx crossbar permutation instructions
-parameter EXTENSION_ZBKX      = 0,
+//parameter EXTENSION_ZBKX      = 0,
 
 // EXTENSION_ZBS: Support for Zbs single-bit manipulation instructions
-parameter EXTENSION_ZBS       = 0,
+//parameter EXTENSION_ZBS       = 0,
 
 // EXTENSION_ZCB: Support for Zcb basic additional compressed instructions
 // Requires: EXTENSION_C. (Some Zcb instructions also require Zbb or M.)
 // Note Zca is equivalent to C, as we do not support the F extension.
-parameter EXTENSION_ZCB       = 0,
+//parameter EXTENSION_ZCB       = 0,
 
 // EXTENSION_ZCLSD: Support for Zclsd compressed load/store pair instructions
 // Requires: EXTENSION_ZILSD, EXTENSION_C.
-parameter EXTENSION_ZCLSD     = 0,
+//parameter EXTENSION_ZCLSD     = 0,
 
 // EXTENSION_ZCMP: Support for Zcmp push/pop instructions.
 // Requires: EXTENSION_C.
-parameter EXTENSION_ZCMP      = 0,
+//parameter EXTENSION_ZCMP      = 0,
 
 // EXTENSION_ZIFENCEI: Support for the fence.i instruction
 // Optional, since a plain branch/jump will also flush the prefetch queue.
-parameter EXTENSION_ZIFENCEI  = 0,
+//parameter EXTENSION_ZIFENCEI  = 0,
 
 // EXTENSION_ZILSD: Support for Zilsd load/store pair instructions
-parameter EXTENSION_ZILSD     = 0,
+//parameter EXTENSION_ZILSD     = 0,
 
 // ----------------------------------------------------------------------------
 // Custom RISC-V extensions
 
 // EXTENSION_XH3B: Custom bit-extract-multiple instructions for Hazard3
-parameter EXTENSION_XH3BEXTM  = 0,
+//parameter EXTENSION_XH3BEXTM  = 0,
 
 // EXTENSION_XH3IRQ: Custom preemptive, prioritised interrupt support. Can be
 // disabled if an external interrupt controller (e.g. PLIC) is used. If
 // disabled, and NUM_IRQS > 1, the external interrupts are simply OR'd into
 // mip.meip.
-parameter EXTENSION_XH3IRQ    = 0,
+parameter EXTENSION_XH3IRQ    = 1,
 
 // EXTENSION_XH3PMPM: PMPCFGMx CSRs to enforce PMP regions in M-mode without
 // locking. Unlike ePMP mseccfg.rlb, locked and unlocked regions can coexist
-parameter EXTENSION_XH3PMPM   = 0,
+parameter EXTENSION_XH3PMPM   = 1,
 
 // EXTENSION_XH3POWER: Custom power management controls for Hazard3
-parameter EXTENSION_XH3POWER  = 0,
+//parameter EXTENSION_XH3POWER  = 0,
 
 // ----------------------------------------------------------------------------
 // Standard CSR support
