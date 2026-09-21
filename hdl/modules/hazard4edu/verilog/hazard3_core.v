@@ -600,8 +600,6 @@ hazard3_alu #(
 `include "hazard3_config_inst.vh"
 ) alu (
 	.aluop      (d_aluop),
-	.funct3_32b (d_funct3_32b),
-	.funct7_32b (d_funct7_32b),
 	.op_a       (x_op_a),
 	.op_b       (x_op_b),
 	.result     (x_alu_result),

@@ -38,8 +38,7 @@ always @ (*) begin: shift
 	for (i = 0; i < W_SHAMT; i = i + 1) begin
 		if (shamt[i]) begin
 			shift_accum = (shift_accum << (1 << i)) |
-				({W_DATA{sext}} & ~({W_DATA{1'b1}} << (1 << i))) |
-				({W_DATA{rotate && |EXTENSION_ZBB}} & (shift_accum >> (W_DATA - (1 << i))));
+				({W_DATA{sext}} & ~({W_DATA{1'b1}} << (1 << i)));
 		end
 	end
 
