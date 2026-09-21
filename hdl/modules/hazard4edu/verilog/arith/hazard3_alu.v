@@ -51,7 +51,6 @@ wire shift_right_nleft =
 	aluop == ALUOP_SRA;
 
 wire shift_arith = aluop == ALUOP_SRA;
-wire shift_rotate = 1'b0;
 
 hazard3_shift_barrel #(
 `include "hazard3_config_inst.vh"
@@ -59,7 +58,6 @@ hazard3_shift_barrel #(
 	.din         (op_a),
 	.shamt       (op_b[4:0]),
 	.right_nleft (shift_right_nleft),
-	.rotate      (shift_rotate),
 	.arith       (shift_arith),
 	.dout        (shift_dout)
 );

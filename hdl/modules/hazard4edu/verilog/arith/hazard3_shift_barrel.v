@@ -17,7 +17,6 @@ module hazard3_shift_barrel #(
 	input wire [W_DATA-1:0]  din,
 	input wire [W_SHAMT-1:0] shamt,
 	input wire               right_nleft,
-	input wire               rotate,
 	input wire               arith,
 	output reg [W_DATA-1:0]  dout
 );
