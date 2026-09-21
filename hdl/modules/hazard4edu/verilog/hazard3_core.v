@@ -401,7 +401,6 @@ reg  [1:0]           xm_addr_align;
 reg  [W_MEMOP-1:0]   xm_memop;
 reg  [W_EXCEPT-1:0]  xm_except;
 reg                  xm_except_to_d_mode;
-reg                  xm_no_pc_increment;
 reg                  xm_sleep_wfi;
 reg                  xm_sleep_block;
 reg                  xm_delay_irq_entry_on_ls_stagex;
@@ -754,7 +753,6 @@ end
 // B-fmt are almost identical to S-fmt, so we rs1 + S-fmt is almost free.
 
 wire [W_ADDR-1:0] x_addr_sum =
-	(d_lspair_offset & {W_ADDR{|EXTENSION_ZILSD}}) +
 	(d_addr_is_regoffs ? x_rs1_bypass : d_pc) +
 	d_addr_offs;
 
@@ -1256,15 +1254,12 @@ always @ (posedge clk or negedge rst_n) begin
 		xm_rs1 <= {W_REGADDR{1'b0}};
 		xm_rs2 <= {W_REGADDR{1'b0}};
 		xm_rd <= {W_REGADDR{1'b0}};
-		xm_no_pc_increment <= 1'b0;
 	end else begin
 		unblock_out <= 1'b0;
 		if (!m_stall) begin
 			xm_rs1 <= REGADDR_MASK & d_rs1;
 			xm_rs2 <= REGADDR_MASK & d_rs2;
 			xm_rd  <= REGADDR_MASK & d_rd;
-			// PC increment is suppressed non-final micro-ops, only needed for Zcmp:
-			xm_no_pc_increment <= d_no_pc_increment && |EXTENSION_ZCMP;
 			// If some X-sourced exception has squashed the address phase, need to squash the data phase too.
 			xm_memop            <= x_except != EXCEPT_NONE ? MEMOP_NONE : d_memop;
 			xm_except           <= x_except;
@@ -1397,7 +1392,6 @@ assign m_stall = m_bus_stall ||
 // was *not* a taken branch, which is why we can just walk back the PC.
 assign m_exception_return_addr = d_pc - (
 	m_trap_is_irq         ? 32'd0 :
-	xm_no_pc_increment    ? 32'd0 :
 	prev_instr_was_32_bit ? 32'd4 : 32'd2
 );
 
