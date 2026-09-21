@@ -357,7 +357,7 @@ always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		reset_holdoff <= 1'b1;
 	end else begin
-		reset_holdoff <= (|EXTENSION_XH3POWER && delay_first_fetch) ? reset_holdoff : 1'b0;
+		reset_holdoff <= 1'b0;
 		// This should be impossible, but assert to be sure, because it *will*
 		// change the fetch address (and we shouldn't check it in hardware if
 		// we can prove it doesn't happen)
@@ -706,7 +706,7 @@ wire [31:0] next_instr = {
 wire next_instr_is_32bit = next_instr[1:0] == 2'b11 || ~|EXTENSION_C;
 
 wire [3:0] decomp_uop_step;
-wire [3:0] uop_ctr = decomp_uop_step & {4{|EXTENSION_ZCMP}};
+wire [3:0] uop_ctr = decomp_uop_step & {4{|1'b0}};
 
 wire [4:0] zcmp_pushpop_rs2 =
 	uop_ctr == 4'h0 ? 5'd01                   : // ra
@@ -733,32 +733,25 @@ wire [4:0] zclsd_sdsp_rs2_coarse = {       next_instr[6:3],   df_lspair_phase_ne
 
 always @ (*) begin
 
-	casez ({next_instr_is_32bit, |EXTENSION_ZCMP, next_instr[15:0]})
-	{1'b1, 1'bz, 16'bzzzzzzzzzzzzzzzz}: predecode_rs1_coarse = next_instr[19:15]; // 32-bit R, S, B formats
-	{1'b0, 1'bz, 16'b00zzzzzzzzzzzz00}: predecode_rs1_coarse = 5'd2;              // c.addi4spn + don't care
-	{1'b0, 1'bz, 16'b0zzzzzzzzzzzzz01}: predecode_rs1_coarse = next_instr[11:7];  // c.addi, c.addi16sp + don't care (jal, li)
-	{1'b0, 1'bz, 16'bz1zzzzzzzzzzzz10}: predecode_rs1_coarse = 5'd2;              // c.lwsp, c.swsp, c.ldsp, c.sdsp
-	{1'b0, 1'bz, 16'bz00zzzzzzzzzzz10}: predecode_rs1_coarse = next_instr[11:7];  // c.slli, c.mv, c.add
-	{1'b0, 1'b1, 16'b1011zzzzzzzzzz10}: predecode_rs1_coarse = zcmp_pushpop_rs1;  // cm.push, cm.pop*
-	{1'b0, 1'b1, 16'b1010zzzzz0zzzz10}: predecode_rs1_coarse = zcmp_mvsa01_rs1;   // cm.mvsa01
-	{1'b0, 1'b1, 16'b1010zzzzz1zzzz10}: predecode_rs1_coarse = zcmp_mva01s_rs1;   // cm.mva01s
+	casez ({next_instr_is_32bit, next_instr[15:0]})
+	{1'b1, 16'bzzzzzzzzzzzzzzzz}: predecode_rs1_coarse = next_instr[19:15]; // 32-bit R, S, B formats
+	{1'b0, 16'b00zzzzzzzzzzzz00}: predecode_rs1_coarse = 5'd2;              // c.addi4spn + don't care
+	{1'b0, 16'b0zzzzzzzzzzzzz01}: predecode_rs1_coarse = next_instr[11:7];  // c.addi, c.addi16sp + don't care (jal, li)
+	{1'b0, 16'bz1zzzzzzzzzzzz10}: predecode_rs1_coarse = 5'd2;              // c.lwsp, c.swsp, c.ldsp, c.sdsp
+	{1'b0, 16'bz00zzzzzzzzzzz10}: predecode_rs1_coarse = next_instr[11:7];  // c.slli, c.mv, c.add
 	default:                            predecode_rs1_coarse = {2'b01, next_instr[9:7]};
 	endcase
 
-	casez ({next_instr_is_32bit, |EXTENSION_ZCMP, |EXTENSION_ZILSD, |EXTENSION_ZCLSD, next_instr[15:0]})
-	{1'b1, 1'bz, 1'b1, 1'bz, 16'bzz11zzzzz0z0zzzz}: predecode_rs2_coarse = zilsd_rs2_coarse;   // ld, sd (Zilsd)
-	{1'b1, 1'bz, 1'b0, 1'bz, 16'bzz11zzzzz0z0zzzz}: predecode_rs2_coarse = next_instr[24:20];  // ld, sd (no Zilsd)
+	casez ({next_instr_is_32bit, next_instr[15:0]})
+	{1'b1, 16'bzz11zzzzz0z0zzzz}: predecode_rs2_coarse = next_instr[24:20];  // ld, sd (no Zilsd)
 
-	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzz0zzzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];  // (cover remaining 32-bit
-	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzz10zzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];  //  patterns, without overlap)
-	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzz11zzzzz1zzzzzz}: predecode_rs2_coarse = next_instr[24:20];
-	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzz11zzzzz0z1zzzz}: predecode_rs2_coarse = next_instr[24:20];
+	{1'b1, 16'bzz0zzzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];  // (cover remaining 32-bit
+	{1'b1, 16'bzz10zzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];  //  patterns, without overlap)
+	{1'b1, 16'bzz11zzzzz1zzzzzz}: predecode_rs2_coarse = next_instr[24:20];
+	{1'b1, 16'bzz11zzzzz0z1zzzz}: predecode_rs2_coarse = next_instr[24:20];
 
-	{1'b0, 1'bz, 1'b1, 1'b1, 16'bzz1zzzzzzzzzzz00}: predecode_rs2_coarse = zclsd_sd_rs2_coarse;
-	{1'b0, 1'bz, 1'bz, 1'bz, 16'bzz0zzzzzzzzzzz10}: predecode_rs2_coarse = next_instr[6:2];    // c.add, c.swsp
-	{1'b0, 1'b1, 1'bz, 1'bz, 16'bz01zzzzzzzzzzz10}: predecode_rs2_coarse = zcmp_pushpop_rs2;   // cm.push
-	{1'b0, 1'bz, 1'b1, 1'b1, 16'bz11zzzzzzzzzzz10}: predecode_rs2_coarse = zclsd_sdsp_rs2_coarse;
-	default:                                        predecode_rs2_coarse = {2'b01, next_instr[4:2]};
+	{1'b0, 16'bzz0zzzzzzzzzzz10}: predecode_rs2_coarse = next_instr[6:2];    // c.add, c.swsp
+	default:                      predecode_rs2_coarse = {2'b01, next_instr[4:2]};
 	endcase
 
 	// The "fine" predecode targets those instructions which either:
@@ -781,11 +774,9 @@ always @ (*) begin
 	default: predecode_rs1_fine = predecode_rs1_coarse;
 	endcase
 
-	casez ({|EXTENSION_C, |EXTENSION_ZILSD, |EXTENSION_ZCLSD, next_instr})
+	casez ({|EXTENSION_C, next_instr})
 	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BEQZ}: predecode_rs2_fine = 5'd0;    // -> beq rs1, x0, label
 	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BNEZ}: predecode_rs2_fine = 5'd0;    // -> bne rs1, x0, label
-	{1'b1, 1'b1, 1'bz,           `RVOPC_SD    }: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[24:21]}};
-	{1'b1, 1'b1, 1'b1, 16'hzzzz, `RVOPC_C_SDSP}: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[ 6: 3]}};
 	default:                                     predecode_rs2_fine = predecode_rs2_coarse;
 	endcase
 
@@ -865,8 +856,7 @@ end else begin: have_decompress
 
 	wire cir_clken =
 		~|cir_vld || (!cir_vld[1] && &buf_contents[1:0]) ||
-		|cir_use  || (|EXTENSION_ZCMP && cir_is_uop && !uop_stall) ||
-		(|EXTENSION_ZCMP && uop_clear);
+		|cir_use;
 
 	wire cir_is_uop_next = decomp_is_uop && |buf_level_next;
 	wire cir_uop_nonfinal_next = cir_is_uop_next && !decomp_is_final_uop;
@@ -884,10 +874,10 @@ end else begin: have_decompress
 			cir                  <= decomp_instr_out | 32'd3;
 			cir_is_32bit         <= decomp_instr_is_32bit;
 			cir_invalid_16bit    <= decomp_invalid;
-			cir_is_uop           <= |EXTENSION_ZCMP && !uop_clear && cir_is_uop_next;
-			cir_uop_nonfinal     <= |EXTENSION_ZCMP && !uop_clear && cir_uop_nonfinal_next;
-			cir_uop_no_pc_update <= |EXTENSION_ZCMP && !uop_clear && decomp_uop_no_pc_update;
-			cir_uop_atomic       <= |EXTENSION_ZCMP && !uop_clear && decomp_uop_atomic;
+			cir_is_uop           <= |1'b0 && !uop_clear && cir_is_uop_next;
+			cir_uop_nonfinal     <= |1'b0 && !uop_clear && cir_uop_nonfinal_next;
+			cir_uop_no_pc_update <= |1'b0 && !uop_clear && decomp_uop_no_pc_update;
+			cir_uop_atomic       <= |1'b0 && !uop_clear && decomp_uop_atomic;
 		end
 	end
 
