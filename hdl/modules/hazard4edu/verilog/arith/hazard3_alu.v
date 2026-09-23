@@ -28,11 +28,9 @@ wire inv_op_b = sub && !(
 	aluop == ALUOP_AND || aluop == ALUOP_OR || aluop == ALUOP_XOR || aluop == ALUOP_RS2
 );
 
-wire [W_DATA-1:0] op_a_shifted = op_a;
-
 wire [W_DATA-1:0] op_b_inv = op_b ^ {W_DATA{inv_op_b}};
 
-wire [W_DATA-1:0] sum  = op_a_shifted + op_b_inv + {{W_DATA-1{1'b0}}, sub};
+wire [W_DATA-1:0] sum  = op_a + op_b_inv + {{W_DATA-1{1'b0}}, sub};
 wire [W_DATA-1:0] op_xor = op_a ^ op_b;
 
 wire cmp_is_unsigned = aluop == ALUOP_LTU;
@@ -85,18 +83,18 @@ end
 always @ (*) begin
 	casez ({|EXTENSION_A, aluop})
 		// Base ISA
-		{8'bz, ALUOP_ADD    }: result = sum;
-		{8'bz, ALUOP_SUB    }: result = sum;
-		{8'bz, ALUOP_LT     }: result = {{W_DATA-1{1'b0}}, lt};
-		{8'bz, ALUOP_LTU    }: result = {{W_DATA-1{1'b0}}, lt};
-		{8'bz, ALUOP_SRL    }: result = shift_dout;
-		{8'bz, ALUOP_SRA    }: result = shift_dout;
-		{8'bz, ALUOP_SLL    }: result = shift_dout;
+		{1'bz, ALUOP_ADD    }: result = sum;
+		{1'bz, ALUOP_SUB    }: result = sum;
+		{1'bz, ALUOP_LT     }: result = {{W_DATA-1{1'b0}}, lt};
+		{1'bz, ALUOP_LTU    }: result = {{W_DATA-1{1'b0}}, lt};
+		{1'bz, ALUOP_SRL    }: result = shift_dout;
+		{1'bz, ALUOP_SRA    }: result = shift_dout;
+		{1'bz, ALUOP_SLL    }: result = shift_dout;
 		// A
-		{8'b1, ALUOP_MAX    }: result = lt ? op_b : op_a;
-		{8'b1, ALUOP_MIN    }: result = lt ? op_a : op_b;
-		{8'b1, ALUOP_MAXU   }: result = lt ? op_b : op_a;
-		{8'b1, ALUOP_MINU   }: result = lt ? op_a : op_b;
+		{1'b1, ALUOP_MAX    }: result = lt ? op_b : op_a;
+		{1'b1, ALUOP_MIN    }: result = lt ? op_a : op_b;
+		{1'b1, ALUOP_MAXU   }: result = lt ? op_b : op_a;
+		{1'b1, ALUOP_MINU   }: result = lt ? op_a : op_b;
 
 		default:                    result = bitwise;
 	endcase
