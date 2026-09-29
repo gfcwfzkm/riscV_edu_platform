@@ -24,10 +24,11 @@ architecture rtl of hazard3_onehot_encode is
 begin
 
     process(all) is
-        variable grant : std_logic_vector(GRANT_WIDTH_C - 1 downto 0) := (others => '0');
+        variable grant : std_logic_vector(GRANT_WIDTH_C - 1 downto 0);
     begin
+        grant := (others => '0');
         for i in 0 to REQUEST_WIDTH_C - 1 loop
-            if ?? req(i) then
+            if req(i) = '1' then
                 grant := grant or std_logic_vector(to_unsigned(i, GRANT_WIDTH_C));
             end if;
         end loop;

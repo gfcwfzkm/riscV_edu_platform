@@ -105,8 +105,8 @@ begin
                  '-' & ALUOP_C.SLL_OP => result <= shift_result;
             -- A Extension:
             when '1' & ALUOP_C.MAX    | 
-                 '1' & ALUOP_C.MIN    | 
-                 '1' & ALUOP_C.MAXU   | 
+                 '1' & ALUOP_C.MAXU   => result <= op_b when a_is_less_than_b = '1' else op_a;
+            when '1' & ALUOP_C.MIN    | 
                  '1' & ALUOP_C.MINU   => result <= op_a when a_is_less_than_b = '1' else op_b;
             when others          => result <= bitwise_operation;
         end case?;

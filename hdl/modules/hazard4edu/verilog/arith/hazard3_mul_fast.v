@@ -87,9 +87,15 @@ end
 // other platforms you may just end up with a pile of gates.
 
 `ifndef RISCV_FORMAL_ALTOPS
+if (RISCV_FORMAL_ALTOPS) begin: FORMAL_EQUIV_32MUL
 
-assign result = op_a_r * op_b_r;
+	assign result = result_vld ? (op_a_r + op_b_r) ^ 32'h5876063e : 32'hdeadbeef;
+	
+end else begin: REGULAR_BEHAVIOUR_32MUL
 
+	assign result = op_a_r * op_b_r;
+	
+end
 `else
 
 // riscv-formal can use a simpler function, since it's just confirming the
@@ -139,18 +145,27 @@ wire [2*XLEN-1:0] op_b_sext = {
 wire [2*XLEN-1:0] result_full = op_a_sext * op_b_sext;
 
 `ifndef RISCV_FORMAL_ALTOPS
+if (RISCV_FORMAL_ALTOPS) begin: FORMAL_EQUIV_64MUL
 
-assign result = op_r == M_OP_MUL ? result_full[0 +: XLEN] : result_full[XLEN +: XLEN];
+	assign result =
+		op_r == M_OP_MULH   ? (op_a_r + op_b_r) ^ 32'hf6583fb7 :
+		op_r == M_OP_MULHSU ? (op_a_r - op_b_r) ^ 32'hecfbe137 :
+		op_r == M_OP_MULHU  ? (op_a_r + op_b_r) ^ 32'h949ce5e8 :
+		op_r == M_OP_MUL    ? (op_a_r + op_b_r) ^ 32'h5876063e : 32'hdeadbeef;
 
+end else begin: REGULAR_BEHAVIOUR_64MUL
+
+	assign result = op_r == M_OP_MUL ? result_full[0 +: XLEN] : result_full[XLEN +: XLEN];
+	
+end
 `else
-
 assign result =
-	op_r == M_OP_MULH   ? (op_a_r + op_b_r) ^ 32'hf6583fb7 :
-	op_r == M_OP_MULHSU ? (op_a_r - op_b_r) ^ 32'hecfbe137 :
-	op_r == M_OP_MULHU  ? (op_a_r + op_b_r) ^ 32'h949ce5e8 :
-	op_r == M_OP_MUL    ? (op_a_r + op_b_r) ^ 32'h5876063e : 32'hdeadbeef;
-
+		op_r == M_OP_MULH   ? (op_a_r + op_b_r) ^ 32'hf6583fb7 :
+		op_r == M_OP_MULHSU ? (op_a_r - op_b_r) ^ 32'hecfbe137 :
+		op_r == M_OP_MULHU  ? (op_a_r + op_b_r) ^ 32'h949ce5e8 :
+		op_r == M_OP_MUL    ? (op_a_r + op_b_r) ^ 32'h5876063e : 32'hdeadbeef;
 `endif
+
 
 end
 endgenerate

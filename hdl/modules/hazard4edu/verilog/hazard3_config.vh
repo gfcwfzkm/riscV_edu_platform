@@ -252,6 +252,9 @@ parameter BRANCH_PREDICTOR    = 0,
 //   up to a power of two.
 parameter MTVEC_WMASK         = 32'hfffffffd,
 
+// Introduced by GEP3 / gfcwfzkm to make formal equivalence easier to check
+parameter RISCV_FORMAL_ALTOPS = 0,
+
 // ----------------------------------------------------------------------------
 // Port size parameters (do not modify)
 
