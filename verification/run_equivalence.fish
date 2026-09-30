@@ -203,7 +203,7 @@ end
 # |                     HAZARD4EDU EQUIVALENCE CHECKS                         |
 # =============================================================================
 
-if test "$check_mode" = default -o "$check_mode" = full
+if test "$check_mode" = hazard4edu -o "$check_mode" = default -o "$check_mode" = full
     set -l hazard_alu_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
     set -l hazard_alu_verilog ''
 
