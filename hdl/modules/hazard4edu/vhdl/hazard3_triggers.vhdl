@@ -161,7 +161,7 @@ begin
     end generate NO_TRIGGERS;
 
     HAVE_TRIGGERS : if DEBUG_SUPPORT generate
-        --
+        -- Line 482-490
         -- Break flags to front end (tag the current fetch dphase as containing a breakpoint)
         break_any       <= ( (or want_m_mode_break_hw1) or (or want_d_mode_break_hw1) or break_ie_reg &
                              (or want_m_mode_break_hw0) or (or want_d_mode_break_hw0) or break_ie_reg )
@@ -169,7 +169,43 @@ begin
         break_d_mode    <= ( (or want_d_mode_break_hw1) or break_ie_reg &
                              (or want_d_mode_break_hw0) or break_ie_reg )
                             when BREAKPOINT_TRIGGERS > 0 else "00";
+        break_m_step <= break_on_step_reg;
 
+
+        -- ---------------------------------------------------------------------------
+        -- Instruction count trigger logic (single-steo under M-mode control)
+        step_break_enabled <= trig_m_en and (not x_d_mode) and icount_m_reg when x_d_mode = '1' else
+                              trig_m_en and (not x_d_mode) and icount_u_reg;
+        
+        -- L422
+        process(clk, rst_n) is
+        begin
+            if rst_n = '0' then
+                break_on_step_reg <= '0';
+            elsif rising_edge(clk) then
+                -- Note icount triggers differ from dcsr.step in that they ignore exceptions,
+                -- only triggering on retired instructions.
+                break_on_step_reg <= (not (x_d_mode or event_trap_enter)) and 
+                                     (break_on_step_reg or (event_instr_ret and step_break_enabled));
+            end if;
+        end process;
+        
+
+        -- Line 460-478
+        -- ----------------------------------------------------------------------------
+        -- Breakpoint trigger logic
+
+        -- To reduce the fanin of jump and load/store gating in stage X, the address
+        -- lookup is in stage F (fetch data phase). We check *fetch addresses*, not
+        -- program counter values. Fetches are always word-sized and word-aligned.
+        --
+        -- To ensure it is safe to do this, non-debug-mode writes to the TDATA1 and
+        -- TDATA2 CSRs cause a prefetch flush, to maintain write-to-fetch ordering.
+        --
+        -- It's possible for different breakpoints to match different halfwords of the
+        -- fetch word. The trigger unit must report both matches separately, because
+        -- it is not known at this point where the instruction boundaries are (we
+        -- don't have the instruction data yet).
         MATCH_PC : for i in 0 to NUMBER_OF_BREAKPOINT_REGS-1 generate
             -- Detect breakpoints
             breakpoint_enabled(i) <= mcontrol_execute_reg(i) and (not fetch_d_mode) and mcontrol_m_reg(i) when fetch_m_mode = '1' else
