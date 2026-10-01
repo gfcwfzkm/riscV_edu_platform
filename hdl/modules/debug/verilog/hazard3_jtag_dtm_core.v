@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - changed reset to active high                        |
+|                       - changed to synchronous reset                        |
 \*****************************************************************************/
 
 // DTMCS + DMI control logic, bus interface and bus clock domain crossing for
@@ -11,8 +16,6 @@
 // This core logic can be reused and connected to some other serial transport
 // or, for example, the ECP5 JTAGG primitive (see hazard5_ecp5_jtag_dtm.v)
 
-`default_nettype none
-
 module hazard3_jtag_dtm_core #(
 	parameter DTMCS_IDLE_HINT = 3'd4,
 	parameter W_ADDR = 8,
@@ -22,7 +25,7 @@ module hazard3_jtag_dtm_core #(
 	input  wire                  trst_n,
 
 	input  wire                  clk_dmi,
-	input  wire                  rst_n_dmi,
+	input  wire                  rst_dmi,
 
 	// DR capture/update (read/write) signals
 	input  wire                  dr_wen,
@@ -90,7 +93,7 @@ assign dtm_paddr = dr_wdata[34 +: W_ADDR];
 assign dtm_pwrite = dr_wdata[1];
 assign dtm_pwdata = dr_wdata[2 +: 32];
 
-always @ (posedge tck or negedge trst_n) begin
+always @ (posedge tck) begin
 	if (!trst_n) begin
 		dmi_busy <= 1'b0;
 		dmi_cmderr <= 2'd0;
@@ -120,16 +123,18 @@ end
 
 // DTM logic is in TCK domain, actual DMI + DM is in processor domain
 
+wire s_trst = ~trst_n;
+
 hazard3_apb_async_bridge #(
 	.W_ADDR        (W_ADDR),
 	.W_DATA        (32),
 	.N_SYNC_STAGES (2)
 ) inst_hazard3_apb_async_bridge (
 	.clk_src     (tck),
-	.rst_n_src   (trst_n),
+	.rst_src     (s_trst),
 
 	.clk_dst     (clk_dmi),
-	.rst_n_dst   (rst_n_dmi),
+	.rst_dst     (rst_dmi),
 
 	.src_psel    (dtm_psel),
 	.src_penable (dtm_penable),
@@ -170,7 +175,7 @@ wire [W_DR_SHIFT-1:0] dmi_rdata = {
 
 assign dr_rdata = dr_sel_dmi_ndtmcs ? dmi_rdata : dtmcs_rdata;
 
-always @ (posedge tck or negedge trst_n) begin
+always @ (posedge tck) begin
 	if (!trst_n) begin
 		dmihardreset_req <= 1'b0;
 	end else begin
@@ -180,6 +185,3 @@ end
 
 endmodule
 
-`ifndef YOSYS
-`default_nettype wire
-`endif

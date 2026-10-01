@@ -788,7 +788,7 @@ public class busGeneratorSharedBusGenerator {
       result.append(String.format("""
       localparam %s = %d;
       localparam %s = %d;
-      localParam %s = %d;
+      localparam %s = %d;
 
       """, 
       busGeneratorWishboneSignals.AddressBitsGeneric, W_ADDR,

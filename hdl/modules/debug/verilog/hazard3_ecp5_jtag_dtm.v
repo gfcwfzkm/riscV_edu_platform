@@ -1,6 +1,10 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - Moved to active-high reset                          |
 \*****************************************************************************/
 
 // The ECP5 JTAGG primitive (yes that is the correct spelling) allows you to
@@ -18,8 +22,6 @@
 // means with the right config file, you can access a debug module hung from
 // the ECP5 TAP in this fashion using only upstream OpenOCD and gdb.
 
-`default_nettype none
-
 module hazard3_ecp5_jtag_dtm #(
     parameter DTMCS_IDLE_HINT = 3'd4,
     parameter W_PADDR         = 9,
@@ -30,7 +32,7 @@ module hazard3_ecp5_jtag_dtm #(
 
     // Bus clock + reset for Debug Module Interface
     input  wire               clk_dmi,
-    input  wire               rst_n_dmi,
+    input  wire               rst_dmi,
 
     // Debug Module Interface (APB)
     output wire               dmi_psel,
@@ -165,7 +167,7 @@ hazard3_jtag_dtm_core #(
     .trst_n            (jrst_n),
 
     .clk_dmi           (clk_dmi),
-    .rst_n_dmi         (rst_n_dmi),
+    .rst_dmi           (rst_dmi),
 
     .dr_wen            (core_dr_wen),
     .dr_ren            (core_dr_ren),
@@ -189,6 +191,3 @@ assign dmi_paddr[1:0] = 2'b00;
 
 endmodule
 
-`ifndef YOSYS
-`default_nettype wire
-`endif
