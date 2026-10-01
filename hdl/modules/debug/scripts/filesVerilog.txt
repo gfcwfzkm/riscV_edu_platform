@@ -1,0 +1,8 @@
+verilog/hazard3_reset_sync.v
+verilog/hazard3_sync_1bit.v
+verilog/hazard3_apb_async_bridge.v
+verilog/hazard3_dm.v
+verilog/hazard3_jtag_dtm_core.v
+verilog/hazard3_ecp5_jtag_dtm.v
+verilog/debugTop.v
+
