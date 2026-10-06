@@ -417,7 +417,7 @@ public class busGeneratorSharedBusGenerator {
       final var master = masters.get(idx);
       result.append((isVHDL) ? "  " : "  assign ");
       result.append(arbiterBusLocks);
-      result.append(String.format(index, idx));
+      if (nrOfMasters > 1)result.append(String.format(index, idx));
       result.append((isVHDL) ? " <= " : " = ");
       result.append((master == null) ? zero : 
         master.getSignals().get(busGeneratorWishboneSignals.lockEntry).getName());
@@ -427,7 +427,7 @@ public class busGeneratorSharedBusGenerator {
       final var master = masters.get(idx);
       result.append((isVHDL) ? "  " : "  assign ");
       result.append(arbiterBusCycs);
-      result.append(String.format(index, idx));
+      if (nrOfMasters > 1) result.append(String.format(index, idx));
       result.append((isVHDL) ? " <= " : " = ");
       result.append((master == null) ? zero : 
         master.getSignals().get(busGeneratorWishboneSignals.cycEntry).getName());
@@ -474,8 +474,11 @@ public class busGeneratorSharedBusGenerator {
       for (var masterSig : master.getSignals()) {
         final var maskedMasterSig = masterSig.getMaskedSignalName();
         if (maskedMasterSig != null) {
-          final var ackName = (isVHDL) ? String.format("%s(%d)", arbiterBusEnables, masterEntry) :
+          var ackName = arbiterBusEnables;
+          if (nrOfMasters > 1) {
+            ackName = (isVHDL) ? String.format("%s(%d)", arbiterBusEnables, masterEntry) :
               String.format("%s[%d]", arbiterBusEnables, masterEntry);
+          }
           final var ackCond = (isVHDL) ? ackName+" = '1'" : ackName+" == 1'b1";
           result.append(getWhenElse(maskedMasterSig, ackCond, masterSig.getName(), masterSig.getZeroString(isVHDL), isVHDL));
         }
@@ -543,8 +546,9 @@ public class busGeneratorSharedBusGenerator {
           continue;
         }
         final var andOpp = (isVHDL) ? " and " : " & ";
-        final var enaVarIndex = (isVHDL) ? String.format("(%d)", masterEntry) :
+        var enaVarIndex = (isVHDL) ? String.format("(%d)", masterEntry) :
             String.format("[%d]", masterEntry);
+        if (nrOfMasters == 1) enaVarIndex = "";
         result.append("  "+getAssignment(masterSignals.get(inp).getName(), 
             masterInputs.get(inp)+andOpp+arbiterBusEnables+enaVarIndex, isVHDL)+"\n");
       }
@@ -619,13 +623,14 @@ public class busGeneratorSharedBusGenerator {
 
   public String getArbiter(boolean isVHDL, boolean withTimeout) {
     final var result = new StringBuilder();
+      final var AckSignal = busGeneratorWishboneSignals.getMasterInputMap().get(busGeneratorWishboneSignals.ackEntry);
     result.append(getRemark(" Here the arbiter is defined", 2, isVHDL));
-    result.append("  "+getAssignment(arbiterBusEnables, arbiterInternalSignals[1], isVHDL)+"\n");
-    final var andOpp = (isVHDL) ? "and" : "&";
-    if (withTimeout) {
-      var str = String.format("%s %s %s", arbiterInternalSignals[3], andOpp, arbiterInternalSignals[10]);
-      result.append("  "+getAssignment(arbiterError, str, isVHDL)+"\n");
+    if (nrOfMasters > 1) {
+      result.append("  "+getAssignment(arbiterBusEnables, arbiterInternalSignals[1], isVHDL)+"\n");
+    } else {
+      result.append("  "+getAssignment(arbiterBusEnables, (isVHDL) ? "'1'" : "1'b1", isVHDL)+"\n");
     }
+    final var andOpp = (isVHDL) ? "and" : "&";
     final var zeroIdx = (isVHDL) ? "(0)" : "[0]";
     final var notOpp = (isVHDL) ? "not " : "~";
     final var zeroVal = (isVHDL) ? "'0'" : "1'b0";
@@ -634,42 +639,48 @@ public class busGeneratorSharedBusGenerator {
     for (var nr = 0; nr < nrOfMasters; nr++) {
       zeroVect.append("0");
     }
-    final var zero = zeroVect.toString();
-    result.append("  "+getAssignment(arbiterInternalSignals[4]+zeroIdx, notOpp+arbiterBusCycs+zeroIdx, isVHDL)+"\n");
-    result.append("  "+getAssignment(arbiterInternalSignals[5]+zeroIdx, zeroVal, isVHDL)+"\n");
-    result.append("  "+getAssignment(arbiterInternalSignals[6]+zeroIdx, arbiterBusCycs+zeroIdx, isVHDL)+"\n");
-    result.append("  "+getAssignment(arbiterInternalSignals[7]+zeroIdx, zeroVal, isVHDL)+"\n");
     String cond;
-    if (isVHDL) {
-      cond = String.format("((%s and %s) = \"%s\") and ((%s and %s) = \"%s\")", 
-          arbiterBusCycs, arbiterInternalSignals[1], zero, arbiterBusLocks, arbiterInternalSignals[1], zero);
-    } else {
-      cond = String.format("((%s & %s) == %d'd0) && ((%s & %s) == %d'd0)", 
-          arbiterBusCycs, arbiterInternalSignals[1], nrOfMasters, arbiterBusLocks, arbiterInternalSignals[1], nrOfMasters);
-    }
-    result.append(getWhenElse(arbiterInternalSignals[11], cond, arbiterInternalSignals[3], zeroVal, isVHDL));
     if (withTimeout) {
+      if (nrOfMasters > 1) {
+        var str = String.format("%s %s %s", arbiterInternalSignals[3], andOpp, arbiterInternalSignals[10]);
+        result.append("  "+getAssignment(arbiterError, str, isVHDL)+"\n");
+      } else {
+        result.append("  "+getAssignment(arbiterError, arbiterInternalSignals[10], isVHDL)+"\n");
+      }
       if (isVHDL) {
         cond = String.format("%s = x\"0000\"", arbiterInternalSignals[2]);
       } else {
         cond = String.format("%s == 16'd0", arbiterInternalSignals[2]);
       }
-      result.append(getWhenElse(arbiterInternalSignals[10], cond, oneVal, zeroVal, isVHDL));
+        result.append(getWhenElse(arbiterInternalSignals[10], cond, oneVal, zeroVal, isVHDL));
     }
-    if (isVHDL) {
-      cond = String.format("%s = 1 or %s = \"%s\"", arbiterGeneric, arbiterInternalSignals[7], zero);
-    } else {
-      cond = String.format("%s == 1 || %s == %d'd0", arbiterGeneric, arbiterInternalSignals[7], nrOfMasters);
-    }
-    result.append(getWhenElse(arbiterInternalSignals[8], cond, arbiterInternalSignals[6], arbiterInternalSignals[7], isVHDL));
-    if (isVHDL) {
-      cond = String.format("%s /= \"%s\" and %s = '0'", arbiterBusCycs, zero, arbiterInternalSignals[3]);
-    } else {
-      cond = String.format("%s != %d'd0 && %s == 1'b0", arbiterBusCycs, nrOfMasters, arbiterInternalSignals[3]);
-    }
-    result.append(getWhenElse(arbiterInternalSignals[9], cond, oneVal, zeroVal, isVHDL));
-    result.append("\n");
     if (nrOfMasters > 1) {
+      final var zero = zeroVect.toString();
+      result.append("  "+getAssignment(arbiterInternalSignals[4]+zeroIdx, notOpp+arbiterBusCycs+zeroIdx, isVHDL)+"\n");
+      result.append("  "+getAssignment(arbiterInternalSignals[5]+zeroIdx, zeroVal, isVHDL)+"\n");
+      result.append("  "+getAssignment(arbiterInternalSignals[6]+zeroIdx, arbiterBusCycs+zeroIdx, isVHDL)+"\n");
+      result.append("  "+getAssignment(arbiterInternalSignals[7]+zeroIdx, zeroVal, isVHDL)+"\n");
+      if (isVHDL) {
+        cond = String.format("((%s and %s) = \"%s\") and ((%s and %s) = \"%s\")", 
+            arbiterBusCycs, arbiterInternalSignals[1], zero, arbiterBusLocks, arbiterInternalSignals[1], zero);
+      } else {
+        cond = String.format("((%s & %s) == %d'd0) && ((%s & %s) == %d'd0)", 
+            arbiterBusCycs, arbiterInternalSignals[1], nrOfMasters, arbiterBusLocks, arbiterInternalSignals[1], nrOfMasters);
+      }
+      result.append(getWhenElse(arbiterInternalSignals[11], cond, arbiterInternalSignals[3], zeroVal, isVHDL));
+      if (isVHDL) {
+        cond = String.format("%s = 1 or %s = \"%s\"", arbiterGeneric, arbiterInternalSignals[7], zero);
+      } else {
+        cond = String.format("%s == 1 || %s == %d'd0", arbiterGeneric, arbiterInternalSignals[7], nrOfMasters);
+      }
+      result.append(getWhenElse(arbiterInternalSignals[8], cond, arbiterInternalSignals[6], arbiterInternalSignals[7], isVHDL));
+      if (isVHDL) {
+        cond = String.format("%s /= \"%s\" and %s = '0'", arbiterBusCycs, zero, arbiterInternalSignals[3]);
+      } else {
+        cond = String.format("%s != %d'd0 && %s == 1'b0", arbiterBusCycs, nrOfMasters, arbiterInternalSignals[3]);
+      }
+      result.append(getWhenElse(arbiterInternalSignals[9], cond, oneVal, zeroVal, isVHDL));
+      result.append("\n");
       // here we make the generate block
       if (isVHDL) {
         result.append(String.format("  genMasks : for i in 1 to %d generate\n", nrOfMasters - 1));
@@ -702,7 +713,6 @@ public class busGeneratorSharedBusGenerator {
         """);
       }
       result.append("\n");
-      final var AckSignal = busGeneratorWishboneSignals.getMasterInputMap().get(busGeneratorWishboneSignals.ackEntry);
       if (isVHDL) {
         result.append(String.format("""
           arb_1 : process( CLK_O ) is
@@ -768,6 +778,39 @@ public class busGeneratorSharedBusGenerator {
         result.append("  end\n");
       }
       result.append("\n");
+    } else {
+      if (withTimeout) {
+        /* we know we have only one master */
+        String cycsig = "";
+        for (var masterkey : masters.keySet()) {
+          final var master = masters.get(masterkey);
+          final var masterSignals = master.getSignals().get(busGeneratorWishboneSignals.cycEntry);
+          cycsig = masterSignals.getName();
+        }
+        if (isVHDL) {
+          result.append(String.format("""
+            arb_3 : process( CLK_O ) is
+            begin
+              if (rising_edge(CLK_O)) then
+                if (%s = '0' or %s = '1') then
+                  %s <= (others => '1');
+                elsif (%s = '0') then
+                  %s <= std_logic_vector(unsigned(%s) - to_unsigned(1,16));
+                end if;
+              end if;
+            end process arb_3;
+          """, cycsig , AckSignal, arbiterInternalSignals[2], arbiterInternalSignals[10],
+              arbiterInternalSignals[2], arbiterInternalSignals[2]));
+        } else {
+          result.append("""
+            always @(posedge CLK_O)
+            begin
+          """);
+          result.append(String.format("    %s <= (%s == 1'b0 || %s == 1'b1) ? {16{1'b1}} : (%s == 1'b0) ? %s - 16'd1 : %s;\n", 
+            arbiterInternalSignals[2], cycsig, AckSignal, arbiterInternalSignals[10], arbiterInternalSignals[2], arbiterInternalSignals[2]));
+          result.append("  end\n");
+        }
+      }
     }
     return result.toString();
   }

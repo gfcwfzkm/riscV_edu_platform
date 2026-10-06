@@ -71,25 +71,25 @@ module sevenSegments
   // here we define the registers for the 4 seven segments
   sevenSegmentUpdate #( .segmentId(0) ) seg1
                       ( .currentValue(s_displ1Reg),
-                        .dataIn(s_dataInReg),
+                        .dataIn(dataInReg),
                         .functionSelect(indexReg),
                         .newValue(s_displ1Next) );
   
   sevenSegmentUpdate #( .segmentId(1) ) seg2
                       ( .currentValue(s_displ2Reg),
-                        .dataIn(s_dataInReg),
+                        .dataIn(dataInReg),
                         .functionSelect(indexReg),
                         .newValue(s_displ2Next) );
   
   sevenSegmentUpdate #( .segmentId(2) ) seg3
                       ( .currentValue(s_displ3Reg),
-                        .dataIn(s_dataInReg),
+                        .dataIn(dataInReg),
                         .functionSelect(indexReg),
                         .newValue(s_displ3Next) );
   
   sevenSegmentUpdate #( .segmentId(3) ) seg4
                       ( .currentValue(s_displ4Reg),
-                        .dataIn(s_dataInReg),
+                        .dataIn(dataInReg),
                         .functionSelect(indexReg),
                         .newValue(s_displ4Next) );
 

@@ -1,0 +1,7 @@
+verilog/uartTxFifo.v
+verilog/uartRxFifo.v
+verilog/baudGenerator.v
+verilog/uartTx.v
+verilog/uartRx.v
+verilog/uartBus.v
+

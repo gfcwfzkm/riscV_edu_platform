@@ -69,9 +69,9 @@ wire assert_dmi_reset;
 wire dmi_psel;
 wire dmi_penable;
 wire dmi_pwrite;
-wire dmi_paddr;
-wire dmi_pwdata;
-wire dmi_prdata;
+wire[8:0] dmi_paddr;
+wire[31:0] dmi_pwdata;
+wire[31:0] dmi_prdata;
 wire dmi_pready;
 wire dmi_pslverr;
 

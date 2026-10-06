@@ -28,7 +28,8 @@ module uartBus
 
   reg s_ackReg, s_errorReg, s_weReg, s_reReg;
   reg[2:0] s_indexReg;
-  reg[31:0] s_dataInReg, s_dataOut;
+  reg[31:0] s_dataInReg;
+  wire[31:0] s_dataOut;
   reg[3:0] s_byteEnablesReg;
   reg [15:0] s_divisorReg;
   reg [7:0]  s_lineControlReg, s_interruptEnableReg, s_scratchReg, s_modemControlReg;
