@@ -3,11 +3,14 @@ use ieee.std_logic_1164.all;
 
 package hazard3_constants is
 
-    constant DATA_WIDTH_C         : integer := 32;
-    constant ADDRESS_WIDTH_C      : integer := 32;
-    constant ALUOP_WIDTH_C        : integer := 6;
-    constant SHIFT_AMOUNT_WIDTH_C : integer := 5;
-    constant MULOP_WIDTH_C        : integer := 3;
+    constant DATA_WIDTH_C               : integer := 32;
+    constant ADDRESS_WIDTH_C            : integer := 32;
+    constant ALUOP_WIDTH_C              : integer := 6;
+    constant SHIFT_AMOUNT_WIDTH_C       : integer := 5;
+    constant MULOP_WIDTH_C              : integer := 3;
+    constant COMPRESSED_INSTR_WIDTH_C   : integer := 16;
+    constant INSTRUCTION_WIDTH_C        : integer := 32;
+    constant REGISTER_ADDRESS_WIDTH_C   : integer := 5;
 
     type alu_ops_t is record
         ADD     : std_logic_vector(ALUOP_WIDTH_C - 1 downto 0);
@@ -55,98 +58,98 @@ package hazard3_constants is
     end record;
 
     type opcode_constants_t is record
-        C_ADDI4SPN : std_logic_vector(15 downto 0);
-        C_LW       : std_logic_vector(15 downto 0);
-        C_SW       : std_logic_vector(15 downto 0);
-        C_ADDI     : std_logic_vector(15 downto 0);
-        C_JAL      : std_logic_vector(15 downto 0);
-        C_J        : std_logic_vector(15 downto 0);
-        C_LI       : std_logic_vector(15 downto 0);
-        C_LUI      : std_logic_vector(15 downto 0);
-        C_SRLI     : std_logic_vector(15 downto 0);
-        C_SRAI     : std_logic_vector(15 downto 0);
-        C_ANDI     : std_logic_vector(15 downto 0);
-        C_SUB      : std_logic_vector(15 downto 0);
-        C_XOR      : std_logic_vector(15 downto 0);
-        C_OR       : std_logic_vector(15 downto 0);
-        C_AND      : std_logic_vector(15 downto 0);
-        C_BEQZ     : std_logic_vector(15 downto 0);
-        C_BNEZ     : std_logic_vector(15 downto 0);
-        C_SLLI     : std_logic_vector(15 downto 0);
-        C_MV       : std_logic_vector(15 downto 0);
-        C_ADD      : std_logic_vector(15 downto 0);
-        C_LWSP     : std_logic_vector(15 downto 0);
-        C_SWSP     : std_logic_vector(15 downto 0);
-        C_MUL      : std_logic_vector(15 downto 0);
-        ADDI       : std_logic_vector(31 downto 0);
-        JALR       : std_logic_vector(31 downto 0);
-        JAL        : std_logic_vector(31 downto 0);
-        LUI        : std_logic_vector(31 downto 0);
-        SLLI       : std_logic_vector(31 downto 0);
-        SRLI       : std_logic_vector(31 downto 0);
-        SRAI       : std_logic_vector(31 downto 0);
-        ANDI       : std_logic_vector(31 downto 0);
-        ADD        : std_logic_vector(31 downto 0);
-        SUB        : std_logic_vector(31 downto 0);
-        AND_OP     : std_logic_vector(31 downto 0);
-        OR_OP      : std_logic_vector(31 downto 0);
-        XOR_OP     : std_logic_vector(31 downto 0);
-        LW         : std_logic_vector(31 downto 0);
-        SW         : std_logic_vector(31 downto 0);
-        MUL        : std_logic_vector(31 downto 0);
-        BEQ        : std_logic_vector(31 downto 0);
-        BNE        : std_logic_vector(31 downto 0);
-        BLT        : std_logic_vector(31 downto 0);
-        BGE        : std_logic_vector(31 downto 0);
-        BLTU       : std_logic_vector(31 downto 0);
-        BGEU       : std_logic_vector(31 downto 0);
-        AUIPC      : std_logic_vector(31 downto 0);
-        SLTI       : std_logic_vector(31 downto 0);
-        SLTIU      : std_logic_vector(31 downto 0);
-        XORI       : std_logic_vector(31 downto 0);
-        ORI        : std_logic_vector(31 downto 0);
-        SLL32      : std_logic_vector(31 downto 0);
-        SLT        : std_logic_vector(31 downto 0);
-        SLTU       : std_logic_vector(31 downto 0);
-        SRL32      : std_logic_vector(31 downto 0);
-        SRA32      : std_logic_vector(31 downto 0);
-        LB         : std_logic_vector(31 downto 0);
-        LH         : std_logic_vector(31 downto 0);
-        LBU        : std_logic_vector(31 downto 0);
-        LHU        : std_logic_vector(31 downto 0);
-        SB         : std_logic_vector(31 downto 0);
-        SH         : std_logic_vector(31 downto 0);
-        LR_W       : std_logic_vector(31 downto 0);
-        SC_W       : std_logic_vector(31 downto 0);
-        AMO        : std_logic_vector(31 downto 0);
-        CSRRW      : std_logic_vector(31 downto 0);
-        CSRRS      : std_logic_vector(31 downto 0);
-        CSRRC      : std_logic_vector(31 downto 0);
-        CSRRWI     : std_logic_vector(31 downto 0);
-        CSRRSI     : std_logic_vector(31 downto 0);
-        CSRRCI     : std_logic_vector(31 downto 0);
-        FENCE      : std_logic_vector(31 downto 0);
-        ECALL      : std_logic_vector(31 downto 0);
-        MRET       : std_logic_vector(31 downto 0);
-        WFI        : std_logic_vector(31 downto 0);
-        FENCE_I    : std_logic_vector(31 downto 0);
-        EBREAK     : std_logic_vector(31 downto 0);
-        MULH       : std_logic_vector(31 downto 0);
-        MULHSU     : std_logic_vector(31 downto 0);
-        MULHU      : std_logic_vector(31 downto 0);
-        DIV        : std_logic_vector(31 downto 0);
-        DIVU       : std_logic_vector(31 downto 0);
-        REM_OP     : std_logic_vector(31 downto 0);
-        REMU       : std_logic_vector(31 downto 0);
-        AMOSWAP_W  : std_logic_vector(31 downto 0);
-        AMOADD_W   : std_logic_vector(31 downto 0);
-        AMOXOR_W   : std_logic_vector(31 downto 0);
-        AMOAND_W   : std_logic_vector(31 downto 0);
-        AMOOR_W    : std_logic_vector(31 downto 0);
-        AMOMIN_W   : std_logic_vector(31 downto 0);
-        AMOMAX_W   : std_logic_vector(31 downto 0);
-        AMOMINU_W  : std_logic_vector(31 downto 0);
-        AMOMAXU_W  : std_logic_vector(31 downto 0);
+        C_ADDI4SPN : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_LW       : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_SW       : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_ADDI     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_JAL      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_J        : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_LI       : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_LUI      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_SRLI     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_SRAI     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_ANDI     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_SUB      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_XOR      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_OR       : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_AND      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_BEQZ     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_BNEZ     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_SLLI     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_MV       : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_ADD      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_LWSP     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_SWSP     : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        C_MUL      : std_logic_vector(COMPRESSED_INSTR_WIDTH_C - 1 downto 0);
+        ADDI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        JALR       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        JAL        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LUI        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SLLI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SRLI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SRAI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        ANDI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        ADD        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SUB        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AND_OP     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        OR_OP      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        XOR_OP     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LW         : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SW         : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        MUL        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        BEQ        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        BNE        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        BLT        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        BGE        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        BLTU       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        BGEU       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AUIPC      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SLTI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SLTIU      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        XORI       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        ORI        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SLL32      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SLT        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SLTU       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SRL32      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SRA32      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LB         : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LH         : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LBU        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LHU        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SB         : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SH         : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        LR_W       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        SC_W       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMO        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        CSRRW      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        CSRRS      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        CSRRC      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        CSRRWI     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        CSRRSI     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        CSRRCI     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        FENCE      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        ECALL      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        MRET       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        WFI        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        FENCE_I    : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        EBREAK     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        MULH       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        MULHSU     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        MULHU      : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        DIV        : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        DIVU       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        REM_OP     : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        REMU       : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOSWAP_W  : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOADD_W   : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOXOR_W   : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOAND_W   : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOOR_W    : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOMIN_W   : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOMAX_W   : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOMINU_W  : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
+        AMOMAXU_W  : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
     end record;
 
     constant ALUOP_C : alu_ops_t := (
@@ -289,4 +292,21 @@ package hazard3_constants is
         AMOMAXU_W  => "11100------------010-----0101111"
     );
 
+    function to_std_logic(value : boolean) return std_logic;    
+    
+
 end package hazard3_constants;
+
+package body hazard3_constants is
+    function to_std_logic(value : boolean)
+        return std_logic is
+    begin
+        if value then
+            return '1';
+        else
+            return '0';
+        end if;
+    end function to_std_logic;
+    
+end package body hazard3_constants;
+

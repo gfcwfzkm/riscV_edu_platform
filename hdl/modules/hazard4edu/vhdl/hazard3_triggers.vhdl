@@ -53,14 +53,6 @@ entity hazard3_triggers is
 end entity hazard3_triggers;
 
 architecture rtl of hazard3_triggers is
-    function to_std_logic(value : boolean) return std_logic is
-    begin
-        if value then
-            return '1';
-        else
-            return '0';
-        end if;
-    end function to_std_logic;
 
     constant TRIGGER_INDEX_COUNT       : natural  := BREAKPOINT_TRIGGERS;
     constant TRIGGER_INDEX_INTERRUPT   : natural  := BREAKPOINT_TRIGGERS + 1;

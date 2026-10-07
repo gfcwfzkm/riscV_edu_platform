@@ -110,24 +110,7 @@ function check_assert_reset_pair
         prep -top equiv                                     # Prepare the new 'equiv' module as top
         flatten; async2sync; opt                            # Flatten hierarchy, optimize, and map clocks to logic
         sat $sat_options -seq $sat_cycles -verify -prove-asserts -set-init-zero -show-inputs -show-outputs \
-            -show \d_aluop_gold -show \d_aluop_gate -show \d_imm_gold -show \d_imm_gate \
-            -show \d_rd_gold -show \d_rd_gate -show \d_except_gold -show \d_except_gate \
-            -show \d_addr_offs_gold -show \d_addr_offs_gate -show \d_pc_gold -show \d_pc_gate \
-            -show \cir_lock_prev_gold -show \cir_lock_prev_gate -show \cir_lock_gold -show \cir_lock_gate \
-            -show \d_starved_gold -show \d_starved_gate -show \d_stall_gold -show \d_stall_gate \
-            -show \d_alusrc_a_gold -show \d_alusrc_a_gate -show \d_alusrc_b_gold -show \d_alusrc_b_gate \
-            -show \d_addr_is_regoffs_gold -show \d_addr_is_regoffs_gate -show \d_sleep_wfi_gold -show \d_sleep_wfi_gate \
-            -show \d_fence_i_gold -show \d_fence_i_gate -show \d_fence_d_gold -show \d_fence_d_gate \
-            -show \d_no_pc_increment_gold -show \d_no_pc_increment_gate -show \d_uninterruptible_gold -show \d_uninterruptible_gate \
-            -show \d_sleep_block_gold -show \d_sleep_block_gate -show \d_sleep_unblock_gold -show \d_sleep_unblock_gate \
-            -show \d_lspair_offset_gold -show \d_lspair_offset_gate -show \d_funct3_32b_gold -show \d_funct3_32b_gate \
-            -show \d_funct7_32b_gold -show \d_funct7_32b_gate -show \df_cir_use_gold -show \df_cir_use_gate \
-            -show \df_cir_flush_behind_gold -show \df_cir_flush_behind_gate -show \df_uop_stall_gold -show \df_uop_stall_gate \
-            -show \df_uop_clear_gold -show \df_uop_clear_gate -show \df_lspair_phase_next_gold -show \df_lspair_phase_next_gate \
-            -show \debug_dpc_rdata_gold -show \debug_dpc_rdata_gate \
-            -show \d_branchcond_gold -show \d_branchcond_gate -show \d_csr_w_imm_gold -show \d_csr_w_imm_gate \
-            -show \d_sleep_wfi_gold -show \d_sleep_wfi_gate \
-            $reset_constraints   # Run SAT solver with optional reset constraints
+        $reset_constraints   # Run SAT solver with optional reset constraints
     "
 
     # Execute yosys with the above script, log the output.
@@ -313,6 +296,8 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         or set failed 1
     end
 
+    set -a hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+    set -a hazard_verilog ""
 
     for configuration in \
         'DEBUG_SUPPORT=false BREAKPOINT_TRIGGERS=0 U_MODE=false EXTENSION_C=false' \
@@ -322,8 +307,8 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         'DEBUG_SUPPORT=true BREAKPOINT_TRIGGERS=2 U_MODE=true EXTENSION_C=true'
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_triggers_$configuration_name" hazard3_triggers \
-            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_triggers.vhdl" \
-            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_triggers.v" \
+            "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_triggers.vhdl" \
+            "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_triggers.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
             "$repo_root/hdl/modules/hazard4edu/verilog" \
             '' 6 \
@@ -338,8 +323,8 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         'EXTENSION_C=true EXTENSION_M=true'
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_instr_decompress_$configuration_name" hazard3_instr_decompress \
-            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_instr_decompress.vhdl" \
-            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_instr_decompress.v" \
+            "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_instr_decompress.vhdl" \
+            "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_instr_decompress.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
             "$repo_root/hdl/modules/hazard4edu/verilog" \
             '' 6 \
@@ -350,8 +335,8 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
     # Always run one focused default decode proof. The exhaustive Cartesian
     # product is opt-in because it is deliberately expensive.
     check_assert_reset_pair hazard3_decode_default hazard3_decode \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+        "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+        "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
         "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
         "$repo_root/hdl/modules/hazard4edu/verilog" \
         '' 8 \
@@ -377,8 +362,8 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
                                                 "U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
                                             set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
                                             check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
-                                                "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-                                                "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+                                                "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+                                                "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
                                                 "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
                                                 "$repo_root/hdl/modules/hazard4edu/verilog" \
                                                 '' 8 \
@@ -398,9 +383,10 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
 end
 
 if test "$check_mode" = decode
-    set -l hazard_alu_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+
     check_assert_reset_pair hazard3_decode_default hazard3_decode \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+        "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
         "$repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
         "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
         "$repo_root/hdl/modules/hazard4edu/verilog" \
