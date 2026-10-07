@@ -83,6 +83,7 @@ if (DEBUG_SUPPORT == 0) begin: no_triggers
 always @ (*) cfg_rdata = {W_DATA{1'b0}};
 assign break_any = 1'b0;
 assign break_d_mode = 1'b0;
+assign break_m_step = 1'b0;
 
 end else begin: have_triggers
 

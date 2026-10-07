@@ -119,6 +119,8 @@ if (PASSTHROUGH) begin: instr_passthrough
 	always @ (*) begin
 		instr_is_32bit = 1'b1;
 		instr_out = instr_in;
+		in_uop_seq = 1'b0;
+		uop_no_pc_update = 1'b0;
 		invalid = 1'b0;
 	end
 end else begin: instr_decompress

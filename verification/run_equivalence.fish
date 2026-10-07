@@ -13,8 +13,8 @@ if test -z "$check_mode" # No argument passed? default it is then
     set check_mode default
 end
 
-if not contains -- $check_mode default full debug
-    printf 'Usage: %s [full|debug]\n' (status filename) >&2
+if not contains -- $check_mode default full debug decode hazard4edu hazard4edu-exhaustive
+    printf 'Usage: %s [default|debug|decode|hazard4edu|hazard4edu-exhaustive|full]\n' (status filename) >&2
     exit 2
 end
 
@@ -109,7 +109,25 @@ function check_assert_reset_pair
         equiv_make -make_assert gold silver equiv           # Create equivalence checking module
         prep -top equiv                                     # Prepare the new 'equiv' module as top
         flatten; async2sync; opt                            # Flatten hierarchy, optimize, and map clocks to logic
-        sat $sat_options -seq $sat_cycles -verify -prove-asserts -set-init-zero $reset_constraints   # Run SAT solver with optional reset constraints
+        sat $sat_options -seq $sat_cycles -verify -prove-asserts -set-init-zero -show-inputs -show-outputs \
+            -show \d_aluop_gold -show \d_aluop_gate -show \d_imm_gold -show \d_imm_gate \
+            -show \d_rd_gold -show \d_rd_gate -show \d_except_gold -show \d_except_gate \
+            -show \d_addr_offs_gold -show \d_addr_offs_gate -show \d_pc_gold -show \d_pc_gate \
+            -show \cir_lock_prev_gold -show \cir_lock_prev_gate -show \cir_lock_gold -show \cir_lock_gate \
+            -show \d_starved_gold -show \d_starved_gate -show \d_stall_gold -show \d_stall_gate \
+            -show \d_alusrc_a_gold -show \d_alusrc_a_gate -show \d_alusrc_b_gold -show \d_alusrc_b_gate \
+            -show \d_addr_is_regoffs_gold -show \d_addr_is_regoffs_gate -show \d_sleep_wfi_gold -show \d_sleep_wfi_gate \
+            -show \d_fence_i_gold -show \d_fence_i_gate -show \d_fence_d_gold -show \d_fence_d_gate \
+            -show \d_no_pc_increment_gold -show \d_no_pc_increment_gate -show \d_uninterruptible_gold -show \d_uninterruptible_gate \
+            -show \d_sleep_block_gold -show \d_sleep_block_gate -show \d_sleep_unblock_gold -show \d_sleep_unblock_gate \
+            -show \d_lspair_offset_gold -show \d_lspair_offset_gate -show \d_funct3_32b_gold -show \d_funct3_32b_gate \
+            -show \d_funct7_32b_gold -show \d_funct7_32b_gate -show \df_cir_use_gold -show \df_cir_use_gate \
+            -show \df_cir_flush_behind_gold -show \df_cir_flush_behind_gate -show \df_uop_stall_gold -show \df_uop_stall_gate \
+            -show \df_uop_clear_gold -show \df_uop_clear_gate -show \df_lspair_phase_next_gold -show \df_lspair_phase_next_gate \
+            -show \debug_dpc_rdata_gold -show \debug_dpc_rdata_gate \
+            -show \d_branchcond_gold -show \d_branchcond_gate -show \d_csr_w_imm_gold -show \d_csr_w_imm_gate \
+            -show \d_sleep_wfi_gold -show \d_sleep_wfi_gate \
+            $reset_constraints   # Run SAT solver with optional reset constraints
     "
 
     # Execute yosys with the above script, log the output.
@@ -203,7 +221,7 @@ end
 # |                     HAZARD4EDU EQUIVALENCE CHECKS                         |
 # =============================================================================
 
-if test "$check_mode" = hazard4edu -o "$check_mode" = default -o "$check_mode" = full
+if test "$check_mode" = hazard4edu -o "$check_mode" = full
     set -l hazard_alu_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
     set -l hazard_alu_verilog ''
 
@@ -294,6 +312,101 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = default -o "$check_mode" =
             "$configuration"
         or set failed 1
     end
+
+
+    for configuration in \
+        'DEBUG_SUPPORT=false BREAKPOINT_TRIGGERS=0 U_MODE=false EXTENSION_C=false' \
+        'DEBUG_SUPPORT=true BREAKPOINT_TRIGGERS=2 U_MODE=false EXTENSION_C=false' \
+        'DEBUG_SUPPORT=true BREAKPOINT_TRIGGERS=2 U_MODE=true EXTENSION_C=false' \
+        'DEBUG_SUPPORT=true BREAKPOINT_TRIGGERS=2 U_MODE=false EXTENSION_C=true' \
+        'DEBUG_SUPPORT=true BREAKPOINT_TRIGGERS=2 U_MODE=true EXTENSION_C=true'
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
+        check_assert_reset_pair "hazard3_triggers_$configuration_name" hazard3_triggers \
+            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_triggers.vhdl" \
+            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_triggers.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            '' 6 \
+            "$configuration"
+        or set failed 1
+    end
+
+    for configuration in \
+        'EXTENSION_C=false EXTENSION_M=false' \
+        'EXTENSION_C=false EXTENSION_M=true' \
+        'EXTENSION_C=true EXTENSION_M=false' \
+        'EXTENSION_C=true EXTENSION_M=true'
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
+        check_assert_reset_pair "hazard3_instr_decompress_$configuration_name" hazard3_instr_decompress \
+            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_instr_decompress.vhdl" \
+            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_instr_decompress.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            '' 6 \
+            "$configuration"
+        or set failed 1
+    end
+
+    # Always run one focused default decode proof. The exhaustive Cartesian
+    # product is opt-in because it is deliberately expensive.
+    check_assert_reset_pair hazard3_decode_default hazard3_decode \
+        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$repo_root/hdl/modules/hazard4edu/verilog" \
+        '' 8 \
+        'EXTENSION_A=true EXTENSION_C=true EXTENSION_E=true EXTENSION_M=true CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false'
+    or set failed 1
+
+    if test "$check_mode" = hazard4edu-exhaustive
+        # Decode has independent feature gates. Exercise the complete
+        # Cartesian product only when explicitly requested.
+    for extension_a in false true
+        for extension_c in false true
+            for extension_e in false true
+                for extension_m in false true
+                    for csr_m_mandatory in false true
+                        for csr_m_trap in false true
+                            for csr_counter in false true
+                                for u_mode in false true
+                                    for debug_support in false true
+                                        for branch_predictor in false true
+                                            set configuration \
+                                                "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m" \
+                                                "CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter" \
+                                                "U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
+                                            set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
+                                            check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
+                                                "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+                                                "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+                                                "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+                                                "$repo_root/hdl/modules/hazard4edu/verilog" \
+                                                '' 8 \
+                                                "$configuration"
+                                            or set failed 1
+                                        end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+if test "$check_mode" = decode
+    set -l hazard_alu_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+    check_assert_reset_pair hazard3_decode_default hazard3_decode \
+        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+        "$repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$repo_root/hdl/modules/hazard4edu/verilog" \
+        '' 8 \
+        'EXTENSION_A=true EXTENSION_C=true EXTENSION_E=true EXTENSION_M=true CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false'
+    or set failed 1
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere
