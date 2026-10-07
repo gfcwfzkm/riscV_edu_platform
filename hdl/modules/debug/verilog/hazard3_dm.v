@@ -1,6 +1,15 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     changes:                                                |
+|                       - Moved to synchronous reset                          |
+|                       - Moved to active high reset                          |
+|                       - Transformed sbus into wishbone master bus           |
+|                       - Removed HAVE_SBA parameter                          |
+|                       - Removed XLEN parameter                              |
+|                       - Moved W_HARTSEL as local parameter                  |
 \*****************************************************************************/
 
 // RISC-V Debug Module for Hazard3. Supports up to 32 cores (1 hart per core).
@@ -13,18 +22,11 @@ module hazard3_dm #(
     parameter N_HARTS      = 1,
     // Where there are multiple DMs, the address of each DM should be a
     // multiple of 'h200, so that bits[8:2] decode correctly.
-    parameter NEXT_DM_ADDR = 32'h0000_0000,
-    // Implement support for system bus access:
-    parameter HAVE_SBA     = 1,
+    parameter NEXT_DM_ADDR = 32'h0000_0000
 
-    // Do not modify:
-    parameter XLEN         = 32,                               // Do not modify
-    parameter W_HARTSEL    = N_HARTS > 1 ? $clog2(N_HARTS) : 1 // Do not modify
 ) (
     // DM is assumed to be in same clock domain as core; clock crossing
     // (if any) is inside DTM, or between DTM and DM.
-    input  wire                      clk,
-    input  wire                      rst_n,
 
     // APB access from Debug Transport Module
     input  wire                      dmi_psel,
@@ -57,36 +59,44 @@ module hazard3_dm #(
     input  wire [N_HARTS-1:0]        hart_running,
 
     // Hart access to data0 CSR (assumed to be core-internal but per-hart)
-    output wire [N_HARTS*XLEN-1:0]   hart_data0_rdata,
-    input  wire [N_HARTS*XLEN-1:0]   hart_data0_wdata,
+    output wire [N_HARTS*31:0]       hart_data0_rdata,
+    input  wire [N_HARTS*31:0]       hart_data0_wdata,
     input  wire [N_HARTS-1:0]        hart_data0_wen,
 
     // Hart instruction injection
-    output wire [N_HARTS*32-1:0]     hart_instr_data,
+    output wire [N_HARTS*31:0]       hart_instr_data,
     output reg  [N_HARTS-1:0]        hart_instr_data_vld,
     input  wire [N_HARTS-1:0]        hart_instr_data_rdy,
     input  wire [N_HARTS-1:0]        hart_instr_caught_exception,
     input  wire [N_HARTS-1:0]        hart_instr_caught_ebreak,
 
-    // System bus access (optional) -- can be hooked up to the standalone AHB
-    // shim (hazard3_sbus_to_ahb.v) or the SBA input port on the processor
-    // wrapper, which muxes SBA into the processor's load/store bus access
-    // port. SBA does not increase debugger bus throughput, but supports
-    // minimally intrusive debug bus access for e.g. Segger RTT.
-    output wire [31:0]               sbus_addr,
-    output wire                      sbus_write,
-    output wire [1:0]                sbus_size,
-    output wire                      sbus_vld,
-    input  wire                      sbus_rdy,
-    input  wire                      sbus_err,
-    output wire [31:0]               sbus_wdata,
-    input  wire [31:0]               sbus_rdata
+    // wishbone master interface, replaces System bus
+    input  wire                      CLK_I,
+    input  wire                      RST_I,
+    input  wire [31:0]               DAT_I,
+    output wire [31:0]               DAT_O,
+    // TAGD_I and TAGD_O are not implemented
+    input  wire                      ACK_I,
+    output wire [31:0]               ADDR_O,
+    output wire                      CYC_O,
+    input  wire                      ERR_I,
+    // LOCK_O is not implemented
+    // RTY_I is not implemented
+    output reg [3:0]                SEL_O,
+    output wire                     STB_O,
+    // TGA_O and TGC_O are not implemented
+    output wire                     WE_O,
+    output wire [2:0]               CTI_O // Registered feedback
+    // BTE_O is not implemented
 );
+
+localparam W_HARTSEL    = N_HARTS > 1 ? $clog2(N_HARTS) : 1; // Do not modify
 
 wire dmi_write = dmi_psel && dmi_penable && dmi_pready && dmi_pwrite;
 wire dmi_read = dmi_psel && dmi_penable && dmi_pready && !dmi_pwrite;
 assign dmi_pready = 1'b1;
 assign dmi_pslverr = 1'b0;
+assign CTI_O = 3'd0;
 
 // Program buffer is fixed at 2 words plus impebreak. The main thing we care
 // about is support for efficient memory block transfers using abstractauto;
@@ -149,10 +159,8 @@ end else begin: has_no_hartsel
 end
 endgenerate
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        hartsel <= {W_HARTSEL{1'b0}};
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         hartsel <= {W_HARTSEL{1'b0}};
     end else begin
         hartsel <= hartsel_next;
@@ -181,11 +189,8 @@ end else begin: has_no_array_mask
 end
 endgenerate
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        hart_array_mask <= {N_HARTS{1'b0}};
-        hasel <= 1'b0;
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         hart_array_mask <= {N_HARTS{1'b0}};
         hasel <= 1'b0;
     end else begin
@@ -223,17 +228,9 @@ end else begin: dmcontrol_single_hart
 end
 endgenerate
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        dmactive <= 1'b0;
-        dmcontrol_ndmreset <= 1'b0;
-        dmcontrol_haltreq <= {N_HARTS{1'b0}};
-        dmcontrol_hartreset <= {N_HARTS{1'b0}};
-        dmcontrol_resethaltreq <= {N_HARTS{1'b0}};
-    end else if (!dmactive) begin
-        // Only dmactive is writable when !dmactive
-        if (dmi_write && dmi_regaddr == ADDR_DMCONTROL)
-            dmactive <= dmi_pwdata[0];
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
+        dmactive <= (dmi_write && dmi_regaddr == ADDR_DMCONTROL && !RST_I) ? dmactive <= dmi_pwdata[0] : 1'b0;
         dmcontrol_ndmreset <= 1'b0;
         dmcontrol_haltreq <= {N_HARTS{1'b0}};
         dmcontrol_hartreset <= {N_HARTS{1'b0}};
@@ -263,8 +260,8 @@ reg  [N_HARTS-1:0] hart_reset_done_prev;
 reg  [N_HARTS-1:0] dmstatus_havereset;
 wire [N_HARTS-1:0] hart_available = hart_reset_done & {N_HARTS{sys_reset_done}};
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
+always @ (posedge CLK_I) begin
+    if (RST_I) begin
         hart_reset_done_prev <= {N_HARTS{1'b0}};
     end else begin
         hart_reset_done_prev <= hart_reset_done;
@@ -273,10 +270,8 @@ end
 
 wire dmcontrol_ackhavereset = dmi_write && dmi_regaddr == ADDR_DMCONTROL && dmi_pwdata[28];
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        dmstatus_havereset <= {N_HARTS{1'b0}};
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         dmstatus_havereset <= {N_HARTS{1'b0}};
     end else begin
         dmstatus_havereset <= (dmstatus_havereset | (hart_reset_done & ~hart_reset_done_prev))
@@ -294,11 +289,8 @@ reg [N_HARTS-1:0] dmcontrol_resumereq_sticky;
 wire dmcontrol_resumereq = dmi_write && dmi_regaddr == ADDR_DMCONTROL &&
     dmi_pwdata[30] && !dmi_pwdata[31];
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        dmstatus_resumeack <= {N_HARTS{1'b0}};
-        dmcontrol_resumereq_sticky <= {N_HARTS{1'b0}};
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         dmstatus_resumeack <= {N_HARTS{1'b0}};
         dmcontrol_resumereq_sticky <= {N_HARTS{1'b0}};
     end else begin
@@ -328,30 +320,28 @@ reg [2:0]  sbaccess; // Size of the transfer
 
 wire sbdata_write_blocked;
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         sbaddress <= {32{1'b0}};
         sbdata <= {32{1'b0}};
-    end else if (!dmactive) begin
-        sbaddress <= {32{1'b0}};
-        sbdata <= {32{1'b0}};
-    end else if (HAVE_SBA) begin
+    end else 
+    begin
         if (dmi_write && dmi_regaddr == ADDR_SBDATA0 && !sbdata_write_blocked) begin
             // Note sbbusyerror and sberror block writes to sbdata0, as the
             // write is required to have no side effects when they are set.
             sbdata <= dmi_pwdata;
-        end else if (sbus_vld && sbus_rdy && !sbus_write && !sbus_err) begin
+        end else if (STB_O && ACK_I && !WE_O && !ERR_I) begin
             // Make sure the lower byte lanes see appropriately shifted data as
             // long as the transfer is naturally aligned
-            sbdata <= sbaddress[1:0] == 2'b01 ? {sbus_rdata[31:8],  sbus_rdata[15:8]}  :
-                      sbaddress[1:0] == 2'b10 ? {sbus_rdata[31:16], sbus_rdata[31:16]} :
-                      sbaddress[1:0] == 2'b11 ? {sbus_rdata[31:8],  sbus_rdata[31:24]} : sbus_rdata;
+            sbdata <= sbaddress[1:0] == 2'b01 ? {DAT_I[31:8],  DAT_I[15:8]}  :
+                      sbaddress[1:0] == 2'b10 ? {DAT_I[31:16], DAT_I[31:16]} :
+                      sbaddress[1:0] == 2'b11 ? {DAT_I[31:8],  DAT_I[31:24]} : DAT_I;
         end
         if (dmi_write && dmi_regaddr == ADDR_SBADDRESS0 && !sbbusy) begin
             // Note sbaddress can't be written when busy, but
             // sberror/sbbusyerror do not prevent writes.
             sbaddress <= dmi_pwdata;
-        end else if (sbus_vld && sbus_rdy && !sbus_err && sbautoincrement) begin
+        end else if (STB_O && ACK_I && !ERR_I && sbautoincrement) begin
             // Note: address increments only following a successful transfer.
             // Spec 0.13.2 weirdly implies address should increment following
             // a sbdata0 read with sbautoincrement=1 and sbreadondata=0, but
@@ -417,8 +407,8 @@ wire sb_badalign =
 
 wire sb_badsize = sbaccess > 3'h2;
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         sbbusy              <= 1'b0;
         sbbusyerror         <= 1'b0;
         sbreadonaddr        <= 1'b0;
@@ -427,16 +417,8 @@ always @ (posedge clk or negedge rst_n) begin
         sbautoincrement     <= 1'b0;
         sberror             <= SBERROR_OK;
         sb_current_is_write <= 1'b0;
-    end else if (!dmactive) begin
-        sbbusy              <= 1'b0;
-        sbbusyerror         <= 1'b0;
-        sbreadonaddr        <= 1'b0;
-        sbreadondata        <= 1'b0;
-        sbaccess            <= 3'h0;
-        sbautoincrement     <= 1'b0;
-        sberror             <= SBERROR_OK;
-        sb_current_is_write <= 1'b0;
-    end else if (HAVE_SBA) begin
+    end else 
+    begin
         if (dmi_write && dmi_regaddr == ADDR_SBCS) begin
             // Assume a transfer is not in progress when written (per spec)
             sbbusyerror     <= sbbusyerror && !dmi_pwdata[22];
@@ -450,9 +432,9 @@ always @ (posedge clk or negedge rst_n) begin
             if (sb_access_illegal_when_busy) begin
                 sbbusyerror <= 1'b1;
             end
-            if (sbus_vld && sbus_rdy) begin
+            if (STB_O && (ACK_I || ERR_I)) begin
                 sbbusy <= 1'b0;
-                if (sbus_err) begin
+                if (ERR_I) begin
                     sberror <= SBERROR_BADADDR;
                 end
             end
@@ -469,14 +451,26 @@ always @ (posedge clk or negedge rst_n) begin
     end
 end
 
-assign sbus_addr  = sbaddress;
-assign sbus_write = sb_current_is_write;
-assign sbus_size  = sbaccess[1:0];
-assign sbus_vld   = sbbusy;
+assign ADDR_O  = sbaddress;
+assign WE_O    = sb_current_is_write;
+assign STB_O   = sbbusy;
+assign CYC_O   = sbbusy;
+
+  always @*
+    case (sbaccess[1:0])
+      2'b00   : case (sbaddress[1:0])
+                  2'b00   : SEL_O <= 4'b0001;
+                  2'b01   : SEL_O <= 4'b0010;
+                  2'b10   : SEL_O <= 4'b0100;
+                  default : SEL_O <= 4'b1000;
+                endcase
+      2'b01   : SEL_O <= (sbaddress[1] == 1'b1) ? 4'b1100 : 4'b0011;
+      default : SEL_O <= 4'b1111;
+    endcase
 
 // Replicate byte lanes to handle naturally-aligned cases.
-assign sbus_wdata = sbaccess[1:0] == 2'b00 ? {4{sbdata[7:0]}}  :
-                    sbaccess[1:0] == 2'b01 ? {2{sbdata[15:0]}} : sbdata;
+assign DAT_O = sbaccess[1:0] == 2'b00 ? {4{sbdata[7:0]}}  :
+               sbaccess[1:0] == 2'b01 ? {2{sbdata[15:0]}} : sbdata;
 
 // ----------------------------------------------------------------------------
 // Abstract command data registers
@@ -491,36 +485,31 @@ wire abstractcs_busy;
 //
 // The DM can also read/write data0 at all times.
 
-reg [XLEN-1:0] abstract_data0;
+reg [31:0] abstract_data0;
 
 assign hart_data0_rdata = {N_HARTS{abstract_data0}};
 
-always @ (posedge clk or negedge rst_n) begin: update_hart_data0
+always @ (posedge CLK_I) begin: update_hart_data0
     reg signed [31:0] i;
-    if (!rst_n) begin
-        abstract_data0 <= {XLEN{1'b0}};
-    end else if (!dmactive) begin
-        abstract_data0 <= {XLEN{1'b0}};
+    if (RST_I || !dmactive) begin
+        abstract_data0 <= {32{1'b0}};
     end else if (dmi_write && dmi_regaddr == ADDR_DATA0) begin
         abstract_data0 <= dmi_pwdata;
     end else begin
         for (i = 0; i < N_HARTS; i = i + 1) begin
             if (hartsel == i[W_HARTSEL-1:0] && hart_data0_wen[i] && hart_halted[i] && abstractcs_busy)
-                abstract_data0 <= hart_data0_wdata[i * XLEN +: XLEN];
+                abstract_data0 <= hart_data0_wdata[i * 32 +: 32];
         end
     end
 end
 
-reg [XLEN-1:0] progbuf0;
-reg [XLEN-1:0] progbuf1;
+reg [31:0] progbuf0;
+reg [31:0] progbuf1;
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        progbuf0 <= {XLEN{1'b0}};
-        progbuf1 <= {XLEN{1'b0}};
-    end else if (!dmactive) begin
-        progbuf0 <= {XLEN{1'b0}};
-        progbuf1 <= {XLEN{1'b0}};
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
+        progbuf0 <= {32{1'b0}};
+        progbuf1 <= {32{1'b0}};
     end else if (dmi_write && !abstractcs_busy) begin
         if (dmi_regaddr == ADDR_PROGBUF0)
             progbuf0 <= dmi_pwdata;
@@ -532,11 +521,8 @@ end
 reg       abstractauto_autoexecdata;
 reg [1:0] abstractauto_autoexecprogbuf;
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        abstractauto_autoexecdata <= 1'b0;
-        abstractauto_autoexecprogbuf <= 2'b00;
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         abstractauto_autoexecdata <= 1'b0;
         abstractauto_autoexecprogbuf <= 2'b00;
     end else if (dmi_write && dmi_regaddr == ADDR_ABSTRACTAUTO) begin
@@ -617,14 +603,8 @@ reg        acmd_prev_write;
 reg [4:0]  acmd_prev_regno;
 reg        acmd_prev_unsupported;
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        acmd_prev_postexec <= 1'b0;
-        acmd_prev_transfer <= 1'b0;
-        acmd_prev_write <= 1'b0;
-        acmd_prev_regno <= 5'h0;
-        acmd_prev_unsupported <= 1'b1;
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         acmd_prev_postexec <= 1'b0;
         acmd_prev_transfer <= 1'b0;
         acmd_prev_write <= 1'b0;
@@ -729,11 +709,8 @@ always @ (*) begin
     endcase
 end
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        abstractcs_cmderr <= CMDERR_OK;
-        acmd_state <= S_IDLE;
-    end else if (!dmactive) begin
+always @ (posedge CLK_I) begin
+    if (RST_I || !dmactive) begin
         abstractcs_cmderr <= CMDERR_OK;
         acmd_state <= S_IDLE;
     end else begin
@@ -757,8 +734,8 @@ wire [31:0] hart_instr_data_nxt =
 reg [31:0] hart_instr_data_reg;
 assign hart_instr_data = {N_HARTS{hart_instr_data_reg}};
 
-always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
+always @ (posedge CLK_I) begin
+    if (RST_I) begin
         hart_instr_data_vld <= 1'b0;
         hart_instr_data_reg <= 32'h00000000;
     end else begin
@@ -843,11 +820,11 @@ always @ (*) begin
                                           // the spec doesn't reserve a location for it.
     };
     ADDR_HALTSUM0:     dmi_prdata = {
-        {XLEN - N_HARTS{1'b0}},
+        {32 - N_HARTS{1'b0}},
         hart_halted & hart_available
     };
     ADDR_HALTSUM1:     dmi_prdata = {
-        {XLEN - 1{1'b0}},
+        {32 - 1{1'b0}},
         |(hart_halted & hart_available)
     };
     ADDR_HAWINDOWSEL:  dmi_prdata = 32'h00000000;
@@ -883,9 +860,9 @@ always @ (*) begin
         sberror,
         7'h20,                            // sbasize = 32
         5'b00111                          // 8, 16, 32-bit transfers supported
-    } & {32{|HAVE_SBA}};
-    ADDR_SBDATA0:      dmi_prdata = sbdata & {32{|HAVE_SBA}};
-    ADDR_SBADDRESS0:   dmi_prdata = sbaddress & {32{|HAVE_SBA}};
+    };
+    ADDR_SBDATA0:      dmi_prdata = sbdata;
+    ADDR_SBADDRESS0:   dmi_prdata = sbaddress;
     ADDR_CONFSTRPTR0:  dmi_prdata = 32'h4c296328;
     ADDR_CONFSTRPTR1:  dmi_prdata = 32'h20656b75;
     ADDR_CONFSTRPTR2:  dmi_prdata = 32'h6e657257;
@@ -893,7 +870,7 @@ always @ (*) begin
     ADDR_NEXTDM:       dmi_prdata = NEXT_DM_ADDR;
     ADDR_PROGBUF0:     dmi_prdata = progbuf0;
     ADDR_PROGBUF1:     dmi_prdata = progbuf1;
-    default:           dmi_prdata = {XLEN{1'b0}};
+    default:           dmi_prdata = {32{1'b0}};
     endcase
 end
 

@@ -1,6 +1,4 @@
-`default_nettype none
-
-module hazard3_dm_ecp5 #(
+module debugTop #(
     // Where there are multiple harts per DM, the least-indexed hart is the
     // least-significant on each concatenated hart access bus.
     parameter N_HARTS      = 1,
@@ -8,20 +6,9 @@ module hazard3_dm_ecp5 #(
     // multiple of 'h200, so that bits[8:2] decode correctly.
     parameter NEXT_DM_ADDR = 32'h0000_0000,
     // Implement support for system bus access:
-    parameter HAVE_SBA     = 1,
     parameter DTMCS_IDLE_HINT = 3'd4,
-    parameter W_PADDR         = 9,
-
-    // Do not modify:
-    parameter ABITS           = W_PADDR - 2, // do not modify
-    parameter XLEN         = 32,                               // Do not modify
-    parameter W_HARTSEL    = N_HARTS > 1 ? $clog2(N_HARTS) : 1 // Do not modify
+    parameter W_PADDR         = 9
 ) (
-    // DM is assumed to be in same clock domain as core; clock crossing
-    // (if any) is inside DTM, or between DTM and DM.
-    input  wire                      clk,
-    input  wire                      rst_n,
-
     // Reset request/acknowledge. "req" is a pulse >= 1 cycle wide. "done" is
     // level-sensitive, goes high once component is out of reset.
     //
@@ -43,8 +30,8 @@ module hazard3_dm_ecp5 #(
     input  wire [N_HARTS-1:0]        hart_running,
 
     // Hart access to data0 CSR (assumed to be core-internal but per-hart)
-    output wire [N_HARTS*XLEN-1:0]   hart_data0_rdata,
-    input  wire [N_HARTS*XLEN-1:0]   hart_data0_wdata,
+    output wire [N_HARTS*32-1:0]     hart_data0_rdata,
+    input  wire [N_HARTS*32-1:0]     hart_data0_wdata,
     input  wire [N_HARTS-1:0]        hart_data0_wen,
 
     // Hart instruction injection
@@ -54,24 +41,31 @@ module hazard3_dm_ecp5 #(
     input  wire [N_HARTS-1:0]        hart_instr_caught_exception,
     input  wire [N_HARTS-1:0]        hart_instr_caught_ebreak,
 
-    // System bus access (optional) -- can be hooked up to the standalone AHB
-    // shim (hazard3_sbus_to_ahb.v) or the SBA input port on the processor
-    // wrapper, which muxes SBA into the processor's load/store bus access
-    // port. SBA does not increase debugger bus throughput, but supports
-    // minimally intrusive debug bus access for e.g. Segger RTT.
-    output wire [31:0]               sbus_addr,
-    output wire                      sbus_write,
-    output wire [1:0]                sbus_size,
-    output wire                      sbus_vld,
-    input  wire                      sbus_rdy,
-    input  wire                      sbus_err,
-    output wire [31:0]               sbus_wdata,
-    input  wire [31:0]               sbus_rdata
+    // wishbone master interface, replaces System bus
+    input  wire                      CLK_I,
+    input  wire                      RST_I,
+    input  wire [31:0]               DAT_I,
+    output wire [31:0]               DAT_O,
+    // TAGD_I and TAGD_O are not implemented
+    input  wire                      ACK_I,
+    output wire [31:0]               ADDR_O,
+    output wire                      CYC_O,
+    input  wire                      ERR_I,
+    // LOCK_O is not implemented
+    // RTY_I is not implemented
+    output reg [3:0]                SEL_O,
+    output wire                     STB_O,
+    // TGA_O and TGC_O are not implemented
+    output wire                     WE_O,
+    output wire [2:0]               CTI_O // Registered feedback
+    // BTE_O is not implemented
 );
 
-wire dmi_rst_n;
+localparam ABITS = W_PADDR - 2; // do not modify
+
+wire dmi_rst;
 wire dmihardreset_req;
-wire assert_dmi_reset_n;
+wire assert_dmi_reset;
 wire dmi_psel;
 wire dmi_penable;
 wire dmi_pwrite;
@@ -81,12 +75,12 @@ wire [31:0]        dmi_prdata;
 wire dmi_pready;
 wire dmi_pslverr;
 
-assign assert_dmi_reset_n = !dmihardreset_req || rst_n;
+assign assert_dmi_reset = dmihardreset_req || RST_I;
 
 hazard3_reset_sync reset_sync (
-    .clk(clk),
-    .rst_n_in(assert_dmi_reset_n),
-    .rst_n_out(dmi_rst_n)
+    .clk(CLK_I),
+    .rst_in(assert_dmi_reset),
+    .rst_out(dmi_rst)
 );
 
 hazard3_ecp5_jtag_dtm #(
@@ -95,8 +89,8 @@ hazard3_ecp5_jtag_dtm #(
     .ABITS(ABITS)
 ) hazard3_ecp5_jtag_dtm_instance (
     .dmihardreset_req(dmihardreset_req),
-    .clk_dmi(clk),
-    .rst_n_dmi(dmi_rst_n),
+    .clk_dmi(CLK_I),
+    .rst_dmi(dmi_rst),
     .dmi_psel(dmi_psel),
     .dmi_penable(dmi_penable),
     .dmi_pwrite(dmi_pwrite),
@@ -109,13 +103,8 @@ hazard3_ecp5_jtag_dtm #(
 
 hazard3_dm #(
     .N_HARTS(N_HARTS),
-    .NEXT_DM_ADDR(NEXT_DM_ADDR),
-    .HAVE_SBA(HAVE_SBA),
-    .XLEN(XLEN),
-    .W_HARTSEL(W_HARTSEL)
+    .NEXT_DM_ADDR(NEXT_DM_ADDR)
 ) hazard3_dm_instance (
-    .clk(clk),
-    .rst_n(rst_n),
     .dmi_psel(dmi_psel),
     .dmi_penable(dmi_penable),
     .dmi_pwrite(dmi_pwrite),
@@ -141,14 +130,18 @@ hazard3_dm #(
     .hart_instr_data_rdy(hart_instr_data_rdy),
     .hart_instr_caught_exception(hart_instr_caught_exception),
     .hart_instr_caught_ebreak(hart_instr_caught_ebreak),
-    .sbus_addr(sbus_addr),
-    .sbus_write(sbus_write),
-    .sbus_size(sbus_size),
-    .sbus_vld(sbus_vld),
-    .sbus_rdy(sbus_rdy),
-    .sbus_err(sbus_err),
-    .sbus_wdata(sbus_wdata),
-    .sbus_rdata(sbus_rdata)
+    .CLK_I(CLK_I),
+    .RST_I(RST_I),
+    .DAT_I(DAT_I),
+    .DAT_O(DAT_O),
+    .ACK_I(ACK_I),
+    .ADDR_O(ADDR_O),
+    .CYC_O(CYC_O),
+    .ERR_I(ERR_I),
+    .SEL_O(SEL_O),
+    .STB_O(STB_O),
+    .WE_O(WE_O),
+    .CTI_O(CTI_O)
 );
 
 endmodule

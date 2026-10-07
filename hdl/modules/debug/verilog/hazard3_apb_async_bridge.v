@@ -1,6 +1,12 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - removed HAZARD3_REG_KEEP_ATTRIBUTE                  |
+|                       - moved to active-high reset                          |
+|                       - moved to synchronous reset                          |
 \*****************************************************************************/
 
 // APB-to-APB asynchronous bridge for connecting DTM to DM, in case DTM is in
@@ -10,12 +16,6 @@
 // Note this module depends on the hazard3_sync_1bit module (a flop-chain
 // synchroniser) which should be reimplemented for your FPGA/process.
 
-`ifndef HAZARD3_REG_KEEP_ATTRIBUTE
-`define HAZARD3_REG_KEEP_ATTRIBUTE (* keep = 1'b1 *)
-`endif
-
-`default_nettype none
-
 module hazard3_apb_async_bridge #(
     parameter W_ADDR = 8,
     parameter W_DATA = 32,
@@ -23,10 +23,10 @@ module hazard3_apb_async_bridge #(
 ) (
     // Resets assumed to be synchronised externally
     input wire               clk_src,
-    input wire               rst_n_src,
+    input wire               rst_src,
 
     input wire               clk_dst,
-    input wire               rst_n_dst,
+    input wire               rst_dst,
 
     // APB port from Transport Module
     input  wire              src_psel,
@@ -66,11 +66,11 @@ module hazard3_apb_async_bridge #(
 // A NRZI toggle handshake might be more appropriate, but can cause spurious
 // bus accesses when only one side of the link is reset.
 
-`HAZARD3_REG_KEEP_ATTRIBUTE reg                            src_req;
-wire                                                       dst_req;
+reg  src_req;
+wire dst_req;
 
-`HAZARD3_REG_KEEP_ATTRIBUTE reg                            dst_ack;
-wire                                                       src_ack;
+reg  dst_ack;
+wire src_ack;
 
 // Note the launch registers are not resettable. We maintain setup/hold on
 // launch-to-capture paths thanks to the req/ack handshake. A stray reset
@@ -79,17 +79,17 @@ wire                                                       src_ack;
 // The req/ack logic itself can be reset safely because the receiving domain
 // is protected from metastability by a 2FF synchroniser.
 
-`HAZARD3_REG_KEEP_ATTRIBUTE reg [W_ADDR + W_DATA + 1 -1:0] src_paddr_pwdata_pwrite; // launch
-`HAZARD3_REG_KEEP_ATTRIBUTE reg [W_ADDR + W_DATA + 1 -1:0] dst_paddr_pwdata_pwrite; // capture
+reg [W_ADDR + W_DATA + 1 -1:0] src_paddr_pwdata_pwrite; // launch
+reg [W_ADDR + W_DATA + 1 -1:0] dst_paddr_pwdata_pwrite; // capture
 
-`HAZARD3_REG_KEEP_ATTRIBUTE reg [W_DATA + 1 -1:0]          dst_prdata_pslverr;      // launch
-`HAZARD3_REG_KEEP_ATTRIBUTE reg [W_DATA + 1 -1:0]          src_prdata_pslverr;      // capture
+reg [W_DATA + 1 -1:0]          dst_prdata_pslverr;      // launch
+reg [W_DATA + 1 -1:0]          src_prdata_pslverr;      // capture
 
 hazard3_sync_1bit #(
     .N_STAGES (N_SYNC_STAGES)
 ) sync_req (
     .clk   (clk_dst),
-    .rst_n (rst_n_dst),
+    .rst   (rst_dst),
     .i     (src_req),
     .o     (dst_req)
 );
@@ -98,7 +98,7 @@ hazard3_sync_1bit #(
     .N_STAGES (N_SYNC_STAGES)
 ) sync_ack (
     .clk   (clk_src),
-    .rst_n (rst_n_src),
+    .rst   (rst_src),
     .i     (dst_ack),
     .o     (src_ack)
 );
@@ -109,8 +109,8 @@ hazard3_sync_1bit #(
 reg src_waiting_for_downstream;
 reg src_pready_r;
 
-always @ (posedge clk_src or negedge rst_n_src) begin
-    if (!rst_n_src) begin
+always @ (posedge clk_src) begin
+    if (rst_src) begin
         src_req <= 1'b0;
         src_waiting_for_downstream <= 1'b0;
         src_prdata_pslverr <= {W_DATA + 1{1'b0}};
@@ -155,8 +155,8 @@ wire dst_bus_finish = dst_penable && dst_pready;
 reg dst_psel_r;
 reg dst_penable_r;
 
-always @ (posedge clk_dst or negedge rst_n_dst) begin
-    if (!rst_n_dst) begin
+always @ (posedge clk_dst) begin
+    if (rst_dst) begin
         dst_ack <= 1'b0;
     end else if (dst_req) begin
         dst_ack <= 1'b1;
@@ -165,8 +165,8 @@ always @ (posedge clk_dst or negedge rst_n_dst) begin
     end
 end
 
-always @ (posedge clk_dst or negedge rst_n_dst) begin
-    if (!rst_n_dst) begin
+always @ (posedge clk_dst) begin
+    if (rst_dst) begin
         dst_psel_r <= 1'b0;
         dst_penable_r <= 1'b0;
         dst_paddr_pwdata_pwrite <= {W_ADDR + W_DATA + 1{1'b0}};
@@ -195,6 +195,3 @@ assign {dst_paddr, dst_pwdata, dst_pwrite} = dst_paddr_pwdata_pwrite;
 
 endmodule
 
-`ifndef YOSYS
-`default_nettype wire
-`endif
