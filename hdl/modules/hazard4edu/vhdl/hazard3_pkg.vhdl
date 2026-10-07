@@ -11,8 +11,12 @@ package hazard3_constants is
     constant COMPRESSED_INSTR_WIDTH_C   : integer := 16;
     constant INSTRUCTION_WIDTH_C        : integer := 32;
     constant REGISTER_ADDRESS_WIDTH_C   : integer := 5;
+    constant BRANCH_CONDITION_WIDTH_C   : integer := 2;
+    constant EXCEPTION_WIDTH_C          : integer := 4;
+    constant ALU_SOURCE_WIDTH_C         : integer := 1;
+    constant MEMOP_WIDTH_C              : integer := 5;
 
-    type alu_ops_t is record
+    type alu_operations_t is record
         ADD     : std_logic_vector(ALUOP_WIDTH_C - 1 downto 0);
         SUB     : std_logic_vector(ALUOP_WIDTH_C - 1 downto 0);
         LT      : std_logic_vector(ALUOP_WIDTH_C - 1 downto 0);
@@ -46,7 +50,7 @@ package hazard3_constants is
         CLMUL   : std_logic_vector(ALUOP_WIDTH_C - 1 downto 0);
     end record;
 
-    type mul_ops_t is record
+    type mul_operations_t is record
         MUL    : std_logic_vector(MULOP_WIDTH_C - 1 downto 0);
         MULH   : std_logic_vector(MULOP_WIDTH_C - 1 downto 0);
         MULHSU : std_logic_vector(MULOP_WIDTH_C - 1 downto 0);
@@ -152,7 +156,55 @@ package hazard3_constants is
         AMOMAXU_W  : std_logic_vector(INSTRUCTION_WIDTH_C - 1 downto 0);
     end record;
 
-    constant ALUOP_C : alu_ops_t := (
+    type exception_constants_t is record
+        NO_EXCEPTION                    : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        INSTRUCTION_MISALIGNED          : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        INSTRUCTION_FAULT               : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        ILLEGAL_INSTRUCTION             : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        EBREAKPOINT                     : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        LOAD_ADDRESS_MISALIGNED         : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        LOAD_ACCESS_FAULT               : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        STORE_ADDRESS_MISALIGNED        : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        STORE_ACCESS_FAULT              : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        ENVIRONMENT_CALL_FROM_U_MODE    : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        RETURN_FROM_M_MODE              : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        ENVIRONMENT_CALL_FROM_M_MODE    : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+        EXCEPTION_REFETCH               : std_logic_vector(EXCEPTION_WIDTH_C - 1 downto 0);
+    end record;
+
+    type memory_operation_constants_t is record
+        LOAD_WORD               : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        LOAD_HALF               : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        LOAD_BYTE               : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        LOAD_HALF_UNSIGNED      : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        LOAD_BYTE_UNSIGNED      : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        STORE_WORD              : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        STORE_HALF              : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        STORE_BYTE              : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        LOAD_RESERVED_WORD      : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        STORE_CONDITIONAL_WORD  : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        ATOMIC_MEM_OP           : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+        NONE                    : std_logic_vector(MEMOP_WIDTH_C - 1 downto 0);
+    end record;
+
+    type branch_conditions_t is record
+        NEVER       : std_logic_vector(BRANCH_CONDITION_WIDTH_C - 1 downto 0);
+        ALWAYS      : std_logic_vector(BRANCH_CONDITION_WIDTH_C - 1 downto 0);
+        ZERO        : std_logic_vector(BRANCH_CONDITION_WIDTH_C - 1 downto 0);
+        NOT_ZERO    : std_logic_vector(BRANCH_CONDITION_WIDTH_C - 1 downto 0);
+    end record;
+
+    type alu_source_a is record
+        RS1 : std_logic_vector(ALU_SOURCE_WIDTH_C - 1 downto 0);
+        PC  : std_logic_vector(ALU_SOURCE_WIDTH_C - 1 downto 0);
+    end record;
+
+    type alu_source_b is record
+        RS2 : std_logic_vector(ALU_SOURCE_WIDTH_C - 1 downto 0);
+        IMM : std_logic_vector(ALU_SOURCE_WIDTH_C - 1 downto 0);
+    end record;
+
+    constant ALUOP_C : alu_operations_t := (
         ADD     => 6x"00",
         SUB     => 6x"01",
         LT      => 6x"02",
@@ -186,7 +238,7 @@ package hazard3_constants is
         CLMUL   => 6x"34"
     );
 
-    constant MULOP_C : mul_ops_t := (
+    constant MULOP_C : mul_operations_t := (
         MUL    => 3x"0",
         MULH   => 3x"1",
         MULHSU => 3x"2",
@@ -290,6 +342,54 @@ package hazard3_constants is
         AMOMAX_W   => "10100------------010-----0101111",
         AMOMINU_W  => "11000------------010-----0101111",
         AMOMAXU_W  => "11100------------010-----0101111"
+    );
+
+    constant EXCEPT_C : exception_constants_t := (
+        NO_EXCEPTION                    => x"F",
+        INSTRUCTION_MISALIGNED          => x"0",
+        INSTRUCTION_FAULT               => x"1",
+        ILLEGAL_INSTRUCTION             => x"2",
+        EBREAKPOINT                     => x"3",
+        LOAD_ADDRESS_MISALIGNED         => x"4",
+        LOAD_ACCESS_FAULT               => x"5",
+        STORE_ADDRESS_MISALIGNED        => x"6",
+        STORE_ACCESS_FAULT              => x"7",
+        ENVIRONMENT_CALL_FROM_U_MODE    => x"8",
+        RETURN_FROM_M_MODE              => x"A",
+        ENVIRONMENT_CALL_FROM_M_MODE    => x"B",
+        EXCEPTION_REFETCH               => x"E"
+    );
+
+    constant MEMOP_C : memory_operation_constants_t := (
+        LOAD_WORD               => 5x"00",
+        LOAD_HALF               => 5x"01",
+        LOAD_BYTE               => 5x"02",
+        LOAD_HALF_UNSIGNED      => 5x"03",
+        LOAD_BYTE_UNSIGNED      => 5x"04",
+        STORE_WORD              => 5x"05",
+        STORE_HALF              => 5x"06",
+        STORE_BYTE              => 5x"07",
+        LOAD_RESERVED_WORD      => 5x"08",
+        STORE_CONDITIONAL_WORD  => 5x"09",
+        ATOMIC_MEM_OP           => 5x"0A",
+        NONE                    => 5x"10"
+    );
+
+    constant BRANCH_C : branch_conditions_t := (
+        NEVER       => "00",
+        ALWAYS      => "01",
+        ZERO        => "10",
+        NOT_ZERO    => "11"
+    );
+
+    constant ALUSRCA_C : alu_source_a  := (
+        RS1 => "0",
+        PC  => "1"
+    );
+
+    constant ALUSRCB_C : alu_source_b  := (
+        RS2 => "0",
+        IMM => "1"
     );
 
     function to_std_logic(value : boolean) return std_logic;    
