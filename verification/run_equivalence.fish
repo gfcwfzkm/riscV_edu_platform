@@ -332,44 +332,33 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         or set failed 1
     end
 
-    # Always run one focused default decode proof. The exhaustive Cartesian
-    # product is opt-in because it is deliberately expensive.
-    check_assert_reset_pair hazard3_decode_default hazard3_decode \
-        "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-        "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
-        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-        "$repo_root/hdl/modules/hazard4edu/verilog" \
-        '' 8 \
-        'EXTENSION_A=true EXTENSION_C=true EXTENSION_E=true EXTENSION_M=true CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false'
-    or set failed 1
-
     if test "$check_mode" = hazard4edu-exhaustive
         # Decode has independent feature gates. Exercise the complete
         # Cartesian product only when explicitly requested.
-    for extension_a in false true
-        for extension_c in false true
-            for extension_e in false true
-                for extension_m in false true
-                    for csr_m_mandatory in false true
-                        for csr_m_trap in false true
-                            for csr_counter in false true
-                                for u_mode in false true
-                                    for debug_support in false true
-                                        for branch_predictor in false true
-                                            set configuration \
-                                                "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m" \
-                                                "CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter" \
-                                                "U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
-                                            set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
-                                            check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
-                                                "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-                                                "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
-                                                "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-                                                "$repo_root/hdl/modules/hazard4edu/verilog" \
-                                                '' 8 \
-                                                "$configuration"
-                                            or set failed 1
-                                        end
+        for extension_a in false true
+            for extension_c in false true
+                for extension_e in false true
+                    for extension_m in false true
+                        for csr_m_mandatory in false true
+                            for csr_m_trap in false true
+                                for csr_counter in false true
+                                    for u_mode in false true
+                                        for debug_support in false true
+                                            for branch_predictor in false true
+                                                set configuration \
+                                                    "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m" \
+                                                    "CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter" \
+                                                    "U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
+                                                set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
+                                                check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
+                                                    "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+                                                    "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+                                                    "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+                                                    "$repo_root/hdl/modules/hazard4edu/verilog" \
+                                                    '' 8 \
+                                                    "$configuration"
+                                                or set failed 1
+                                            end
                                         end
                                     end
                                 end
@@ -385,14 +374,46 @@ end
 if test "$check_mode" = decode
     set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
 
-    check_assert_reset_pair hazard3_decode_default hazard3_decode \
-        "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-        "$repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
-        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-        "$repo_root/hdl/modules/hazard4edu/verilog" \
-        '' 8 \
-        'EXTENSION_A=true EXTENSION_C=true EXTENSION_E=true EXTENSION_M=true CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false'
-    or set failed 1
+    for extension_a in false true
+        for extension_c in false true
+            for extension_e in false true
+                for extension_m in false true
+                    for csr_m_mandatory in false true
+                        for csr_m_trap in false true
+                            for csr_counter in false true
+                                for u_mode in false true
+                                    for debug_support in false true
+                                        for branch_predictor in false true
+                                            set configuration \
+                                                "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
+                                            set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
+                                            check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
+                                                "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+                                                "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+                                                "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+                                                "$repo_root/hdl/modules/hazard4edu/verilog" \
+                                                '' 8 \
+                                                "$configuration"
+                                            or set failed 1
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # check_assert_reset_pair hazard3_decode_default hazard3_decode \
+    #     "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
+    #     "$repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+    #     "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+    #     "$repo_root/hdl/modules/hazard4edu/verilog" \
+    #     '' '' \
+    #     'EXTENSION_A=false EXTENSION_C=false EXTENSION_E=false EXTENSION_M=false CSR_M_MANDATORY=false CSR_M_TRAP=false CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false'
+    # or set failed 1
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere

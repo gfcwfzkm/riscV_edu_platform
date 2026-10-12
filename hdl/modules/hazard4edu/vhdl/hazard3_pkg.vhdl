@@ -204,6 +204,12 @@ package hazard3_constants is
         IMM : std_logic_vector(ALU_SOURCE_WIDTH_C - 1 downto 0);
     end record;
 
+    type csr_access_types_t is record
+        W : std_logic_vector(1 downto 0);
+        S : std_logic_vector(1 downto 0);
+        C : std_logic_vector(1 downto 0);
+    end record;
+
     constant ALUOP_C : alu_operations_t := (
         ADD     => 6x"00",
         SUB     => 6x"01",
@@ -311,7 +317,7 @@ package hazard3_constants is
         LHU        => "-----------------101-----0000011",
         SB         => "-----------------000-----0100011",
         SH         => "-----------------001-----0100011",
-        LR_W       => "00010------------010-----0101111",
+        LR_W       => "00010--00000-----010-----0101111",
         SC_W       => "00011------------010-----0101111",
         AMO        => "-----------------010-----0101111",
         CSRRW      => "-----------------001-----1110011",
@@ -320,10 +326,10 @@ package hazard3_constants is
         CSRRWI     => "-----------------101-----1110011",
         CSRRSI     => "-----------------110-----1110011",
         CSRRCI     => "-----------------111-----1110011",
-        FENCE      => "-----------------000-----0001111",
-        ECALL      => x"00000073",
-        MRET       => x"30200073",
-        WFI        => x"10500073",
+        FENCE      => "------------00000000000000001111",
+        ECALL      => "00000000000000000000000001110011",
+        MRET       => "00110000001000000000000001110011",
+        WFI        => "00010000010100000000000001110011",
         FENCE_I    => "00000000000000000001000000001111",
         EBREAK     => "00000000000100000000000001110011",
         MULH       => "0000001----------001-----0110011",
@@ -390,6 +396,12 @@ package hazard3_constants is
     constant ALUSRCB_C : alu_source_b  := (
         RS2 => "0",
         IMM => "1"
+    );
+
+    constant CSR_WTYPE : csr_access_types_t := (
+        W => "00",
+        S => "01",
+        C => "10"
     );
 
     function to_std_logic(value : boolean) return std_logic;    
