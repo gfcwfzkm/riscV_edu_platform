@@ -13,8 +13,8 @@ if test -z "$check_mode" # No argument passed? default it is then
     set check_mode default
 end
 
-if not contains -- $check_mode default full debug decode hazard4edu hazard4edu-exhaustive
-    printf 'Usage: %s [default|debug|decode|hazard4edu|hazard4edu-exhaustive|full]\n' (status filename) >&2
+if not contains -- $check_mode default full debug hazard4edu
+    printf 'Usage: %s [default|debug|hazard4edu|full]\n' (status filename) >&2
     exit 2
 end
 
@@ -332,48 +332,6 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         or set failed 1
     end
 
-    if test "$check_mode" = hazard4edu-exhaustive
-        # Decode has independent feature gates. Exercise the complete
-        # Cartesian product only when explicitly requested.
-        for extension_a in false true
-            for extension_c in false true
-                for extension_e in false true
-                    for extension_m in false true
-                        for csr_m_mandatory in false true
-                            for csr_m_trap in false true
-                                for csr_counter in false true
-                                    for u_mode in false true
-                                        for debug_support in false true
-                                            for branch_predictor in false true
-                                                set configuration \
-                                                    "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m" \
-                                                    "CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter" \
-                                                    "U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
-                                                set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
-                                                check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
-                                                    "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-                                                    "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
-                                                    "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-                                                    "$repo_root/hdl/modules/hazard4edu/verilog" \
-                                                    '' 8 \
-                                                    "$configuration"
-                                                or set failed 1
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-if test "$check_mode" = decode
-    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
-
     for extension_a in false true
         for extension_c in false true
             for extension_e in false true
@@ -392,7 +350,7 @@ if test "$check_mode" = decode
                                                 "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
                                                 "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
                                                 "$repo_root/hdl/modules/hazard4edu/verilog" \
-                                                '' 8 \
+                                                '' '' \
                                                 "$configuration"
                                             or set failed 1
                                         end
@@ -405,6 +363,10 @@ if test "$check_mode" = decode
             end
         end
     end
+end
+
+if test "$check_mode" = default
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
 
     # check_assert_reset_pair hazard3_decode_default hazard3_decode \
     #     "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
