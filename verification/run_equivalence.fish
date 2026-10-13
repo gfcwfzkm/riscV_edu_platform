@@ -35,6 +35,8 @@ printf 'module,status\n' > $results_file
 #   blackbox_file       Some entities might rely on vendor-specific blackboxes to be instantiated. Here a dummy blackbox entity can be provided.
 #   sat_cycles          Override the default 12 cycles for the -seq parameter. See https://yosyshq.readthedocs.io/projects/yosys/en/0.47/cmd/sat.html
 #   generic_values      Optional space-separated NAME=value overrides for both VHDL generics and Verilog parameters.
+#                       Vector values must not contain spaces. For example:
+#                       NUMBER_OF_IRQs=2 IRQ_PRIORITY_BITS=1 IRQ_INPUT_BYPASS=(true,false)
 function check_assert_reset_pair
     # Read in the received parameters
     set -l name $argv[1]
@@ -54,17 +56,49 @@ function check_assert_reset_pair
     set -l verilog_args (string split ' ' -- $verilog_files)    # ^ but for Verilog
     set -l vhdl_generic_args
     set -l verilog_chparam ''
+    set -l vhdl_bypass_value ''
 
     for generic_value in (string split ' ' -- $generic_values)
         set -a vhdl_generic_args "-g$generic_value"
         set -l parameter (string split '=' -- $generic_value)
-        set -l verilog_value $parameter[2]
-        if test "$verilog_value" = true
+        set -l generic_name $parameter[1]
+        set -l generic_value_text $parameter[2]
+        set -l vhdl_parameter $generic_name
+        set -l verilog_parameter $generic_name
+        set -l verilog_value $generic_value_text
+        # The VHDL IRQ controller uses descriptive generic names while the
+        # reference Verilog uses the original Hazard3 parameter names.
+        if test "$generic_name" = NUMBER_OF_IRQs
+            set verilog_parameter NUM_IRQS
+        else if test "$generic_name" = IRQ_INPUT_BYPASS
+            set vhdl_parameter IRQ_INPUTREG_BYPASS
+        else if test "$generic_name" = IRQ_INPUTREG_BYPASS
+            set verilog_parameter IRQ_INPUT_BYPASS
+        end
+        if test "$vhdl_parameter" = IRQ_INPUTREG_BYPASS
+            set vhdl_bypass_value $generic_value_text
+            set -l bypass_values (string split ',' -- (string trim -c '()' -- $generic_value_text))
+            set -l bypass_bits
+            for bypass_value in $bypass_values
+                if test "$bypass_value" = true
+                    set -a bypass_bits 1
+                else if test "$bypass_value" = false
+                    set -a bypass_bits 0
+                else
+                    printf 'Unsupported IRQ bypass value: %s\n' "$bypass_value" >&2
+                    return 1
+                end
+            end
+            set bypass_bit_string (string join '' -- $bypass_bits)
+            set verilog_value (string join '' -- (count $bypass_bits) "'b" $bypass_bit_string)
+            set verilog_chparam "$verilog_chparam chparam -set $verilog_parameter $verilog_value gold;"
+            continue
+        else if test "$verilog_value" = true
             set verilog_value 1
         else if test "$verilog_value" = false
             set verilog_value 0
         end
-        set verilog_chparam "$verilog_chparam chparam -set $parameter[1] $verilog_value gold;"
+        set verilog_chparam "$verilog_chparam chparam -set $verilog_parameter $verilog_value gold;"
     end
     
     set -l verilog_include ''
@@ -75,6 +109,17 @@ function check_assert_reset_pair
     # Create folder if it doesn't exist already
     mkdir -p "$build_dir/$name" $work_dir
     printf '\n=== %s (reset-constrained assertions) ===\n' $name | tee $log_file
+
+    # GHDL does not accept aggregate values for boolean_vector generics via
+    # -g. Apply the vector to a temporary copy of the top-level source instead.
+    if test -n "$vhdl_bypass_value"
+        set -l vhdl_top_source $vhdl_args[-1]
+        set -l vhdl_override_file "$work_dir/$top.generic.vhdl"
+        sed "s/:= (others => FALSE)/:= $vhdl_bypass_value/" "$vhdl_top_source" > "$vhdl_override_file"
+        set vhdl_args[-1] "$vhdl_override_file"
+        set vhdl_generic_args (string match -v -- '-gIRQ_INPUTREG_BYPASS=*' $vhdl_generic_args)
+        set vhdl_generic_args (string match -v -- '-gIRQ_INPUT_BYPASS=*' $vhdl_generic_args)
+    end
 
     # Synthesize the VHDL entity to Verilog, log the output, print if a fail occurred
     if not ghdl --synth --std=08 --out=verilog --workdir=$work_dir $vhdl_generic_args $vhdl_args -e $top >$silver_file 2>>$log_file
@@ -368,23 +413,64 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
             end
         end
     end
-end
 
-if test "$check_mode" = default
+    set -l hazard_vhdl_irq_ctrl_dep "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/arith/hazard3_onehot_priority.vhdl $hazard_vhdl/arith/hazard3_onehot_priority_dynamic.vhdl $hazard_vhdl/arith/hazard3_onehot_encode.vhdl"
+    set -l hazard_verilog_irq_ctrl_dep "$hazard_verilog/arith/hazard3_onehot_priority.v $hazard_verilog/arith/hazard3_onehot_priority_dynamic.v $hazard_verilog/arith/hazard3_onehot_encode.v"
 
     
-    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
-    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
-
-    set -l hazard_vhdl_dep "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/arith/hazard3_onehot_priority.vhdl $hazard_vhdl/arith/hazard3_onehot_priority_dynamic.vhdl $hazard_vhdl/arith/hazard3_onehot_encode.vhdl"
-    set -l hazard_verilog_dep "$hazard_verilog/arith/hazard3_onehot_priority.v $hazard_verilog/arith/hazard3_onehot_priority_dynamic.v $hazard_verilog/arith/hazard3_onehot_encode.v"
-
     check_assert_reset_pair hazard3_irq_ctrl hazard3_irq_ctrl \
-        "$hazard_vhdl_dep $hazard_vhdl/hazard3_irq_ctrl.vhdl" \
-        "$hazard_verilog_dep $hazard_verilog/hazard3_irq_ctrl.v" \
+        "$hazard_vhdl_irq_ctrl_dep $hazard_vhdl/hazard3_irq_ctrl.vhdl" \
+        "$hazard_verilog_irq_ctrl_dep $hazard_verilog/hazard3_irq_ctrl.v" \
         "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
         "$hazard_verilog"
     or set failed 1
+
+    # Exercise the parameterized IRQ controller as well as the default
+    # configuration. The non-power-of-two case checks IRQ index padding. Manual semi-random
+    # IRQ bypass to check the correct bypass behaviour per IRQ line.
+    check_assert_reset_pair hazard3_irq_ctrl_irq2_prio1_bypass10 hazard3_irq_ctrl \
+        "$hazard_vhdl_irq_ctrl_dep $hazard_vhdl/hazard3_irq_ctrl.vhdl" \
+        "$hazard_verilog_irq_ctrl_dep $hazard_verilog/hazard3_irq_ctrl.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog" '' '' 'NUMBER_OF_IRQs=2 IRQ_PRIORITY_BITS=1 IRQ_INPUT_BYPASS=(true,false)'
+    or set failed 1
+
+    check_assert_reset_pair hazard3_irq_ctrl_irq3_prio2_bypass010 hazard3_irq_ctrl \
+        "$hazard_vhdl_irq_ctrl_dep $hazard_vhdl/hazard3_irq_ctrl.vhdl" \
+        "$hazard_verilog_irq_ctrl_dep $hazard_verilog/hazard3_irq_ctrl.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog" '' '' 'NUMBER_OF_IRQs=3 IRQ_PRIORITY_BITS=2 IRQ_INPUT_BYPASS=(false,true,false)'
+    or set failed 1
+
+    check_assert_reset_pair hazard3_irq_ctrl_irq4_prio4_bypass1010 hazard3_irq_ctrl \
+        "$hazard_vhdl_irq_ctrl_dep $hazard_vhdl/hazard3_irq_ctrl.vhdl" \
+        "$hazard_verilog_irq_ctrl_dep $hazard_verilog/hazard3_irq_ctrl.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog" '' '' 'NUMBER_OF_IRQs=4 IRQ_PRIORITY_BITS=4 IRQ_INPUT_BYPASS=(true,false,true,false)'
+    or set failed 1
+
+    for configuration in \
+        'EXTENSION_E=false RESET_REGFILE=false' \
+        'EXTENSION_E=false RESET_REGFILE=true' \
+        'EXTENSION_E=true RESET_REGFILE=false' \
+        'EXTENSION_E=true RESET_REGFILE=true'
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
+        check_assert_reset_pair "hazard3_regfile_1w2r_$configuration_name" hazard3_regfile_1w2r \
+            "$hazard_vhdl_dep $hazard_vhdl/hazard3_regfile_1w2r.vhdl" \
+            "$hazard_verilog_dep $hazard_verilog/hazard3_regfile_1w2r.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$hazard_verilog" \
+            '' 5 \
+            "$configuration"
+        or set failed 1
+    end
+end
+
+if test "$check_mode" = default
+    set -l hazard_vhdl_dep "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
+
+    
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere

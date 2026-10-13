@@ -823,6 +823,8 @@ package hazard3_constants is
     function to_std_logic(value : boolean) return std_logic;
 
     function clog2(value : integer) return natural;
+
+    function num_of_regs(e_extension : boolean) return positive;
     
 
 end package hazard3_constants;
@@ -843,7 +845,18 @@ package body hazard3_constants is
         return natural is
     begin
         return natural(ceil(log2(real(value))));
-    end function clog2;    
+    end function clog2;
+
+    function num_of_regs(e_extension : boolean)
+        return positive is
+    begin
+        if e_extension then
+            return 16;
+        else
+            return 32;
+        end if;
+    end function num_of_regs;
+    
     
 end package body hazard3_constants;
 

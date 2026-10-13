@@ -58,7 +58,7 @@ architecture rtl of hazard3_irq_ctrl is
         variable result : std_logic_vector(vector'length * count - 1 downto 0);
     begin
         for i in 0 to count - 1 loop
-            result(result'length * (i + 1) - 1 downto vector'length * i) := vector;
+            result(vector'length * (i + 1) - 1 downto vector'length * i) := vector;
         end loop;
         return result;
     end function replicate_vector;

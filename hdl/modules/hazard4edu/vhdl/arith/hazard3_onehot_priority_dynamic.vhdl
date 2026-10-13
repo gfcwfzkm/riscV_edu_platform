@@ -40,7 +40,7 @@ begin
     -- 1. Stratify requests according to their level
     process(all) is
         variable v_level_has_reqquest : std_logic_vector(N_PRIORITIES_C - 1 downto 0);
-        variable v_pri_slice          : integer range 0 to REQUEST_WIDTH_C * PRIORITY_WIDTH_C - 1;
+        variable v_pri_slice          : integer range 0 to N_PRIORITIES_C - 1;
     begin
         v_level_has_reqquest := (others => '0');
 
