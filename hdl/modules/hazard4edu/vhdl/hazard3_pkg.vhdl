@@ -1,5 +1,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.math_real.all;
 
 package hazard3_constants is
 
@@ -819,12 +820,15 @@ package hazard3_constants is
     -- Custom Functions
     -- ========================================================================
 
-    function to_std_logic(value : boolean) return std_logic;    
+    function to_std_logic(value : boolean) return std_logic;
+
+    function clog2(value : integer) return natural;
     
 
 end package hazard3_constants;
 
 package body hazard3_constants is
+
     function to_std_logic(value : boolean)
         return std_logic is
     begin
@@ -834,6 +838,12 @@ package body hazard3_constants is
             return '0';
         end if;
     end function to_std_logic;
+
+    function clog2(value : integer)
+        return natural is
+    begin
+        return natural(ceil(log2(real(value))));
+    end function clog2;    
     
 end package body hazard3_constants;
 

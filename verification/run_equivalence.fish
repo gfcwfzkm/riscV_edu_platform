@@ -54,6 +54,7 @@ function check_assert_reset_pair
     set -l verilog_args (string split ' ' -- $verilog_files)    # ^ but for Verilog
     set -l vhdl_generic_args
     set -l verilog_chparam ''
+
     for generic_value in (string split ' ' -- $generic_values)
         set -a vhdl_generic_args "-g$generic_value"
         set -l parameter (string split '=' -- $generic_value)
@@ -65,6 +66,7 @@ function check_assert_reset_pair
         end
         set verilog_chparam "$verilog_chparam chparam -set $parameter[1] $verilog_value gold;"
     end
+    
     set -l verilog_include ''
     if test -n "$verilog_include_dir"
         set verilog_include "-I$verilog_include_dir"
@@ -205,56 +207,59 @@ end
 # =============================================================================
 
 if test "$check_mode" = hazard4edu -o "$check_mode" = full
-    set -l hazard_alu_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
+    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
+
+    set -l hazard_alu_vhdl "$hazard_vhdl/hazard3_pkg.vhdl"
     set -l hazard_alu_verilog ''
 
     check_assert_reset_pair hazard3_shift_barrel hazard3_shift_barrel \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_shift_barrel.vhdl" \
-        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_shift_barrel.v" \
+        "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_shift_barrel.vhdl" \
+        "$hazard_alu_verilog $hazard_verilog/arith/hazard3_shift_barrel.v" \
         '' \
-        "$repo_root/hdl/modules/hazard4edu/verilog"
+        "$hazard_verilog"
     or set failed 1
 
     check_assert_reset_pair hazard3_branchcmp hazard3_branchcmp \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_branchcmp.vhdl" \
-        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_branchcmp.v" \
+        "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_branchcmp.vhdl" \
+        "$hazard_alu_verilog $hazard_verilog/arith/hazard3_branchcmp.v" \
         '' \
-        "$repo_root/hdl/modules/hazard4edu/verilog"
+        "$hazard_verilog"
     or set failed 1
 
     check_assert_reset_pair hazard3_onehot_encode hazard3_onehot_encode \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_onehot_encode.vhdl" \
-        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_onehot_encode.v" \
+        "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_onehot_encode.vhdl" \
+        "$hazard_alu_verilog $hazard_verilog/arith/hazard3_onehot_encode.v" \
         '' \
-        "$repo_root/hdl/modules/hazard4edu/verilog"
+        "$hazard_verilog"
     or set failed 1
 
     check_assert_reset_pair hazard3_onehot_priority hazard3_onehot_priority \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_onehot_priority.vhdl" \
-        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_onehot_priority.v" \
+        "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_onehot_priority.vhdl" \
+        "$hazard_alu_verilog $hazard_verilog/arith/hazard3_onehot_priority.v" \
         '' \
-        "$repo_root/hdl/modules/hazard4edu/verilog"
+        "$hazard_verilog"
     or set failed 1
 
     check_assert_reset_pair hazard3_onehot_priority_dynamic hazard3_onehot_priority_dynamic \
-        "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_onehot_priority.vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_onehot_priority_dynamic.vhdl" \
-        "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_onehot_priority.v $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_onehot_priority_dynamic.v" \
+        "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_onehot_priority.vhdl $hazard_vhdl/arith/hazard3_onehot_priority_dynamic.vhdl" \
+        "$hazard_alu_verilog $hazard_verilog/arith/hazard3_onehot_priority.v $hazard_verilog/arith/hazard3_onehot_priority_dynamic.v" \
         '' \
-        "$repo_root/hdl/modules/hazard4edu/verilog"
+        "$hazard_verilog"
     or set failed 1
 
-    set -a hazard_alu_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_shift_barrel.vhdl"
-    set -a hazard_alu_verilog "$repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_shift_barrel.v"
+    set -a hazard_alu_vhdl "$hazard_vhdl/arith/hazard3_shift_barrel.vhdl"
+    set -a hazard_alu_verilog "$hazard_verilog/arith/hazard3_shift_barrel.v"
 
     for configuration in \
         'EXTENSION_A=false' \
         'EXTENSION_A=true' 
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_alu_$configuration_name" hazard3_alu \
-            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_alu.vhdl" \
-            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_alu.v" \
+            "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_alu.vhdl" \
+            "$hazard_alu_verilog $hazard_verilog/arith/hazard3_alu.v" \
             '' \
-            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            "$hazard_verilog" \
             '' '' \
             "$configuration"
         or set failed 1
@@ -270,10 +275,10 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         'MULH_FAST=true MUL_FAST=true'
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_muldiv_seq_$configuration_name" hazard3_muldiv_seq \
-            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_muldiv_seq.vhdl" \
-            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_muldiv_seq.v" \
+            "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_muldiv_seq.vhdl" \
+            "$hazard_alu_verilog $hazard_verilog/arith/hazard3_muldiv_seq.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            "$hazard_verilog" \
             '' '' \
             "$configuration"
         or set failed 1
@@ -287,17 +292,17 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         'MULH_FAST=true MUL_FAST=true MUL_FASTER=true RISCV_FORMAL_ALTOPS=true'
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_mul_fast_$configuration_name" hazard3_mul_fast \
-            "$hazard_alu_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/arith/hazard3_mul_fast.vhdl" \
-            "$hazard_alu_verilog $repo_root/hdl/modules/hazard4edu/verilog/arith/hazard3_mul_fast.v" \
+            "$hazard_alu_vhdl $hazard_vhdl/arith/hazard3_mul_fast.vhdl" \
+            "$hazard_alu_verilog $hazard_verilog/arith/hazard3_mul_fast.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            "$hazard_verilog" \
             '' 2 \
             "$configuration"
         or set failed 1
     end
 
-    set -a hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
-    set -a hazard_verilog ""
+    set -a hazard_vhdl_dep "$hazard_vhdl/hazard3_pkg.vhdl"
+    set -a hazard_verilog_dep ""
 
     for configuration in \
         'DEBUG_SUPPORT=false BREAKPOINT_TRIGGERS=0 U_MODE=false EXTENSION_C=false' \
@@ -307,10 +312,10 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         'DEBUG_SUPPORT=true BREAKPOINT_TRIGGERS=2 U_MODE=true EXTENSION_C=true'
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_triggers_$configuration_name" hazard3_triggers \
-            "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_triggers.vhdl" \
-            "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_triggers.v" \
+            "$hazard_vhdl_dep $hazard_vhdl/hazard3_triggers.vhdl" \
+            "$hazard_verilog_dep $hazard_verilog/hazard3_triggers.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            "$hazard_verilog" \
             '' 6 \
             "$configuration"
         or set failed 1
@@ -323,10 +328,10 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         'EXTENSION_C=true EXTENSION_M=true'
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
         check_assert_reset_pair "hazard3_instr_decompress_$configuration_name" hazard3_instr_decompress \
-            "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_instr_decompress.vhdl" \
-            "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_instr_decompress.v" \
+            "$hazard_vhdl_dep $hazard_vhdl/hazard3_instr_decompress.vhdl" \
+            "$hazard_verilog_dep $hazard_verilog/hazard3_instr_decompress.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-            "$repo_root/hdl/modules/hazard4edu/verilog" \
+            "$hazard_verilog" \
             '' 6 \
             "$configuration"
         or set failed 1
@@ -346,10 +351,10 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
                                                 "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
                                             set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
                                             check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
-                                                "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-                                                "$hazard_verilog $repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
+                                                "$hazard_vhdl_dep $hazard_vhdl/hazard3_decode.vhdl" \
+                                                "$hazard_verilog_dep $hazard_verilog/hazard3_decode.v" \
                                                 "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-                                                "$repo_root/hdl/modules/hazard4edu/verilog" \
+                                                "$hazard_verilog" \
                                                 '' '' \
                                                 "$configuration"
                                             or set failed 1
@@ -366,16 +371,20 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
 end
 
 if test "$check_mode" = default
-    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
 
-    # check_assert_reset_pair hazard3_decode_default hazard3_decode \
-    #     "$hazard_vhdl $repo_root/hdl/modules/hazard4edu/vhdl/hazard3_decode.vhdl" \
-    #     "$repo_root/hdl/modules/hazard4edu/verilog/hazard3_decode.v" \
-    #     "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-    #     "$repo_root/hdl/modules/hazard4edu/verilog" \
-    #     '' '' \
-    #     'EXTENSION_A=false EXTENSION_C=false EXTENSION_E=false EXTENSION_M=false CSR_M_MANDATORY=false CSR_M_TRAP=false CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false'
-    # or set failed 1
+    
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
+    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
+
+    set -l hazard_vhdl_dep "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/arith/hazard3_onehot_priority.vhdl $hazard_vhdl/arith/hazard3_onehot_priority_dynamic.vhdl $hazard_vhdl/arith/hazard3_onehot_encode.vhdl"
+    set -l hazard_verilog_dep "$hazard_verilog/arith/hazard3_onehot_priority.v $hazard_verilog/arith/hazard3_onehot_priority_dynamic.v $hazard_verilog/arith/hazard3_onehot_encode.v"
+
+    check_assert_reset_pair hazard3_irq_ctrl hazard3_irq_ctrl \
+        "$hazard_vhdl_dep $hazard_vhdl/hazard3_irq_ctrl.vhdl" \
+        "$hazard_verilog_dep $hazard_verilog/hazard3_irq_ctrl.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog"
+    or set failed 1
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere

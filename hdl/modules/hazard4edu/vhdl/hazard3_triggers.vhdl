@@ -61,7 +61,7 @@ architecture rtl of hazard3_triggers is
     constant NUMBER_OF_BREAKPOINT_REGS : positive := maximum(1, BREAKPOINT_TRIGGERS);
 
     -- Configuration State
-    constant W_TRIGGER_SELECT : positive := integer(ceil(log2(real(NUMBER_OF_TRIGGERS))));
+    constant W_TRIGGER_SELECT : positive := clog2(NUMBER_OF_TRIGGERS);
 
     type trigger_module_t is record
         TSELECT : std_logic_vector(11 downto 0);
@@ -140,7 +140,7 @@ architecture rtl of hazard3_triggers is
         to_std_logic(not EXTENSION_C)
     );
 
-    constant NUMBER_OF_TRIGGERS_PADDED : natural := 2 ** integer(ceil(log2(real(NUMBER_OF_TRIGGERS))));
+    constant NUMBER_OF_TRIGGERS_PADDED : natural := 2 ** clog2(NUMBER_OF_TRIGGERS);
     signal tselect_reg : std_logic_vector(W_TRIGGER_SELECT-1 downto 0);
     signal tselect_match : std_logic_vector(NUMBER_OF_TRIGGERS_PADDED-1 downto 0);
 
