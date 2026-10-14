@@ -59,12 +59,12 @@ module hazard3_dm #(
     input  wire [N_HARTS-1:0]        hart_running,
 
     // Hart access to data0 CSR (assumed to be core-internal but per-hart)
-    output wire [N_HARTS*31:0]       hart_data0_rdata,
-    input  wire [N_HARTS*31:0]       hart_data0_wdata,
+    output wire [N_HARTS*32-1:0]       hart_data0_rdata,
+    input  wire [N_HARTS*32-1:0]       hart_data0_wdata,
     input  wire [N_HARTS-1:0]        hart_data0_wen,
 
     // Hart instruction injection
-    output wire [N_HARTS*31:0]       hart_instr_data,
+    output wire [N_HARTS*32-1:0]       hart_instr_data,
     output reg  [N_HARTS-1:0]        hart_instr_data_vld,
     input  wire [N_HARTS-1:0]        hart_instr_data_rdy,
     input  wire [N_HARTS-1:0]        hart_instr_caught_exception,
@@ -230,7 +230,7 @@ endgenerate
 
 always @ (posedge CLK_I) begin
     if (RST_I || !dmactive) begin
-        dmactive <= (dmi_write && dmi_regaddr == ADDR_DMCONTROL && !RST_I) ? dmactive <= dmi_pwdata[0] : 1'b0;
+        dmactive <= (dmi_write && dmi_regaddr == ADDR_DMCONTROL && !RST_I) ? dmi_pwdata[0] : 1'b0;
         dmcontrol_ndmreset <= 1'b0;
         dmcontrol_haltreq <= {N_HARTS{1'b0}};
         dmcontrol_hartreset <= {N_HARTS{1'b0}};

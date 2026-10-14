@@ -150,12 +150,14 @@ function check_assert_reset_pair
         read_verilog -formal $verilog_include $verilog_args # Read the reference Verilog files
         rename $top gold                                    # Rename the reference top module to 'gold'
         $verilog_chparam                                    # Override the reference parameters
+        hierarchy -top gold                                 # Elaborate and flatten gold
+        proc; flatten; memory; async2sync
         read_verilog -formal $silver_file                   # Read in the GHDL synthesized netlist
         rename $top silver                                  # Rename netlist top module to 'silver'
-        proc; memory; async2sync                            # Standard synthesis pre-processing passes
+        proc; flatten silver; memory; async2sync            # Flatten silver without deleting gold        proc; memory; async2sync                            # Standard synthesis pre-processing passes
         equiv_make -make_assert gold silver equiv           # Create equivalence checking module
         prep -top equiv                                     # Prepare the new 'equiv' module as top
-        flatten; async2sync; opt                            # Flatten hierarchy, optimize, and map clocks to logic
+        async2sync; opt                                     # Optimize and map clocks to logic
         sat $sat_options -seq $sat_cycles -verify -prove-asserts -set-init-zero -show-inputs -show-outputs \
         $reset_constraints   # Run SAT solver with optional reset constraints
     "
@@ -183,67 +185,56 @@ set failed 0
 
 if test "$check_mode" = debug -o "$check_mode" = full
     check_assert_reset_pair hazard3_sync_1bit hazard3_sync_1bit \
-        "$repo_root/hdl/modules/debug/vhdl/cdc/hazard3_sync_1bit.vhdl" \
-        "$repo_root/hdl/modules/debug/verilog/cdc/hazard3_sync_1bit.v" \
-        "-set-at 1 rst_n 0 -set-at 2 rst_n 1"
+        "$repo_root/hdl/modules/debug/vhdl/hazard3_sync_1bit.vhdl" \
+        "$repo_root/hdl/modules/debug/verilog/hazard3_sync_1bit.v" \
+        "-set-at 1 rst 1 -set-at 2 rst 0"
     or set failed 1
 
     check_assert_reset_pair hazard3_reset_sync hazard3_reset_sync \
-        "$repo_root/hdl/modules/debug/vhdl/cdc/hazard3_reset_sync.vhdl" \
-        "$repo_root/hdl/modules/debug/verilog/cdc/hazard3_reset_sync.v" \
-        "-set-at 1 rst_n_in 0 -set-at 2 rst_n_in 1"
+        "$repo_root/hdl/modules/debug/vhdl/hazard3_reset_sync.vhdl" \
+        "$repo_root/hdl/modules/debug/verilog/hazard3_reset_sync.v" \
+        "-set-at 1 rst_in 1 -set-at 2 rst_in 0"
     or set failed 1
 
     check_assert_reset_pair hazard3_apb_async_bridge hazard3_apb_async_bridge \
-        "$repo_root/hdl/modules/debug/vhdl/cdc/hazard3_sync_1bit.vhdl $repo_root/hdl/modules/debug/vhdl/cdc/hazard3_apb_async_bridge.vhdl" \
-        "$repo_root/hdl/modules/debug/verilog/cdc/hazard3_sync_1bit.v $repo_root/hdl/modules/debug/verilog/cdc/hazard3_apb_async_bridge.v" \
-        "-set-at 1 rst_n_src 0 -set-at 1 rst_n_dst 0 -set-at 2 rst_n_src 1 -set-at 2 rst_n_dst 1"
-    or set failed 1
-
-    check_assert_reset_pair hazard3_sbus_to_ahb hazard3_sbus_to_ahb \
-        "$repo_root/hdl/modules/debug/vhdl/dm/hazard3_sbus_to_ahb.vhdl" \
-        "$repo_root/hdl/modules/debug/verilog/dm/hazard3_sbus_to_ahb.v"
+        "$repo_root/hdl/modules/debug/vhdl/hazard3_sync_1bit.vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_apb_async_bridge.vhdl" \
+        "$repo_root/hdl/modules/debug/verilog/hazard3_sync_1bit.v $repo_root/hdl/modules/debug/verilog/hazard3_apb_async_bridge.v" \
+        "-set-at 1 rst_src 1 -set-at 1 rst_dst 1 -set-at 2 rst_src 0 -set-at 2 rst_dst 0"
     or set failed 1
 
     check_assert_reset_pair hazard3_dm hazard3_dm \
-        "$repo_root/hdl/modules/debug/vhdl/dm/hazard3_dm.vhdl" \
-        "$repo_root/hdl/modules/debug/verilog/dm/hazard3_dm.v" \
-        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$repo_root/hdl/modules/debug/vhdl/hazard3_dm.vhdl" \
+        "$repo_root/hdl/modules/debug/verilog/hazard3_dm.v" \
+        "-set-at 1 RST_I 1 -set-at 2 RST_I 0" \
         '' '' \
         "8"
     or set failed 1
 
     # The JTAG debug modules have the following files as common dependency.
-    set -l dtm_vhdl "$repo_root/hdl/modules/debug/vhdl/cdc/hazard3_sync_1bit.vhdl $repo_root/hdl/modules/debug/vhdl/cdc/hazard3_apb_async_bridge.vhdl $repo_root/hdl/modules/debug/vhdl/dtm/hazard3_jtag_dtm_core.vhdl"
-    set -l dtm_verilog "$repo_root/hdl/modules/debug/verilog/cdc/hazard3_sync_1bit.v $repo_root/hdl/modules/debug/verilog/cdc/hazard3_apb_async_bridge.v $repo_root/hdl/modules/debug/verilog/dtm/hazard3_jtag_dtm_core.v"
+    set -l dtm_vhdl "$repo_root/hdl/modules/debug/vhdl/hazard3_sync_1bit.vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_apb_async_bridge.vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_jtag_dtm_core.vhdl"
+    set -l dtm_verilog "$repo_root/hdl/modules/debug/verilog/hazard3_sync_1bit.v $repo_root/hdl/modules/debug/verilog/hazard3_apb_async_bridge.v $repo_root/hdl/modules/debug/verilog/hazard3_jtag_dtm_core.v"
 
     check_assert_reset_pair hazard3_jtag_dtm_core hazard3_jtag_dtm_core "$dtm_vhdl" "$dtm_verilog" \
-        "-set-at 1 trst_n 0 -set-at 1 rst_n_dmi 0 -set-at 2 trst_n 1 -set-at 2 rst_n_dmi 1"
-    or set failed 1
-
-    check_assert_reset_pair hazard3_jtag_dtm hazard3_jtag_dtm \
-        "$dtm_vhdl $repo_root/hdl/modules/debug/vhdl/dtm/hazard3_jtag_dtm.vhdl" \
-        "$dtm_verilog $repo_root/hdl/modules/debug/verilog/dtm/hazard3_jtag_dtm.v" \
-        "-set-at 1 trst_n 0 -set-at 1 rst_n_dmi 0 -set-at 2 trst_n 1 -set-at 2 rst_n_dmi 1"
+        "-set-at 1 trst_n 0 -set-at 1 rst_dmi 1 -set-at 2 trst_n 1 -set-at 2 rst_dmi 0"
     or set failed 1
 
     check_assert_reset_pair hazard3_ecp5_jtag_dtm hazard3_ecp5_jtag_dtm \
-        "$dtm_vhdl $repo_root/hdl/modules/debug/vhdl/dtm/hazard3_ecp5_jtag_dtm.vhdl" \
-        "$dtm_verilog $repo_root/hdl/modules/debug/verilog/dtm/hazard3_ecp5_jtag_dtm.v" \
-        "-set-at 1 rst_n_dmi 0 -set-at 2 rst_n_dmi 1" \
+        "$dtm_vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_ecp5_jtag_dtm.vhdl" \
+        "$dtm_verilog $repo_root/hdl/modules/debug/verilog/hazard3_ecp5_jtag_dtm.v" \
+        "-set-at 1 rst_dmi 1 -set-at 2 rst_dmi 0" \
         '' \
         "$repo_root/verification/ecp5_jtagg_blackbox.v"
     or set failed 1
 
-    set -a dtm_vhdl "$repo_root/hdl/modules/debug/vhdl/cdc/hazard3_reset_sync.vhdl $repo_root/hdl/modules/debug/vhdl/dtm/hazard3_ecp5_jtag_dtm.vhdl $repo_root/hdl/modules/debug/vhdl/dm/hazard3_dm.vhdl"
-    set -a dtm_verilog "$repo_root/hdl/modules/debug/verilog/cdc/hazard3_reset_sync.v $repo_root/hdl/modules/debug/verilog/dtm/hazard3_ecp5_jtag_dtm.v $repo_root/hdl/modules/debug/verilog/dm/hazard3_dm.v"
+    set -a dtm_vhdl "$repo_root/hdl/modules/debug/vhdl/hazard3_reset_sync.vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_ecp5_jtag_dtm.vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_dm.vhdl"
+    set -a dtm_verilog "$repo_root/hdl/modules/debug/verilog/hazard3_reset_sync.v $repo_root/hdl/modules/debug/verilog/hazard3_ecp5_jtag_dtm.v $repo_root/hdl/modules/debug/verilog/hazard3_dm.v"
 
-    check_assert_reset_pair hazard3_dm_ecp5 hazard3_dm_ecp5 \
-        "$dtm_vhdl $repo_root/hdl/modules/debug/vhdl/hazard3_dm_ecp5.vhdl" \
-        "$dtm_verilog $repo_root/hdl/modules/debug/verilog/hazard3_dm_ecp5.v" \
-        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+    check_assert_reset_pair debugTop debugTop \
+        "$dtm_vhdl $repo_root/hdl/modules/debug/vhdl/debugTop.vhdl" \
+        "$dtm_verilog $repo_root/hdl/modules/debug/verilog/debugTop.v" \
+        "-set-at 1 RST_I 1 -set-at 2 RST_I 0" \
         '' \
-        "$repo_root/verification/ecp5_jtagg_blackbox.v" \
+        "$repo_root/verification/ecp5_jtagg_blackbox.v"
     or set failed 1
 end
 
