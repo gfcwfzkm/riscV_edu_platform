@@ -22,6 +22,7 @@ package hazard3_constants is
     constant MEMOP_WIDTH_C              : integer := 5;
     constant MAX_NUMBER_OF_IRQ_C        : integer := 512;
     constant CSR_ADDRESS_WIDTH_C        : integer := 12;
+    constant MTVEC_WRITE_MASK_C         : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0) := x"FFFF_FFFF";
 
     -- ========================================================================
     -- Record Type Declarations (Nested Hierarchy)
@@ -435,9 +436,25 @@ package hazard3_constants is
         D_MODE                    : addresses_csr_d_mode_t;                     -- D-Mode CSRs
     end record;
 
+    type mimpid_rtl_t is record
+        PRERELEASE : std_logic_vector(0 downto 0);
+        MAJOR      : std_logic_vector(3 downto 0);
+        MINOR      : std_logic_vector(7 downto 0);
+        PATCH      : std_logic_vector(7 downto 0);
+    end record;
+
     -- ========================================================================
     -- Constant Initialization
     -- ========================================================================
+
+    -- MIMPID records the release version. To be updated
+    -- manually with every release!
+    constant RTL_MIMPID : mimpid_rtl_t  := (
+        PRERELEASE => 1d"0",
+        MAJOR      => 4d"1",
+        MINOR      => 8d"1",
+        PATCH      => 8d"1"
+    );
 
     constant ALUOP_C : alu_operations_t := (
         ADD     => 6x"00",
@@ -826,6 +843,7 @@ package hazard3_constants is
 
     function num_of_regs(e_extension : boolean) return positive;
     
+    type std_logic_array_t is array (natural range <>) of std_logic_vector;
 
 end package hazard3_constants;
 
