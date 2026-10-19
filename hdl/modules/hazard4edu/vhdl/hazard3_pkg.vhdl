@@ -8,6 +8,7 @@ package hazard3_constants is
     -- Top Level Constants 
     -- ========================================================================
 
+
     constant DATA_WIDTH_C               : integer := 32;
     constant ADDRESS_WIDTH_C            : integer := 32;
     constant ALUOP_WIDTH_C              : integer := 6;
@@ -23,6 +24,13 @@ package hazard3_constants is
     constant MAX_NUMBER_OF_IRQ_C        : integer := 512;
     constant CSR_ADDRESS_WIDTH_C        : integer := 12;
     constant MTVEC_WRITE_MASK_C         : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0) := x"FFFF_FFFF";
+
+    -- JEDEC JEP106-compliant vendor ID, left 0 when not implemented or non-commercial implementation.
+    constant MVENDORID_C                : std_logic_vector(DATA_WIDTH_C - 1 downto 0) := 32x"0";
+    -- Architecture ID of this processor / core (left 0 as it doesn't match the Hazard3 fully anymore)
+    constant MARCHID_C                  : std_logic_vector(DATA_WIDTH_C - 1 downto 0) := 32x"0";
+    -- Pointer to configuration structure blob, or all zeros (WORD aligned)
+    constant MCONFIGPTR_C               : std_logic_vector(DATA_WIDTH_C - 1 downto 0) := 32x"0";
 
     -- ========================================================================
     -- Record Type Declarations (Nested Hierarchy)
