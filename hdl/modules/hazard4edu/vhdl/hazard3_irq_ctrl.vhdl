@@ -25,7 +25,7 @@ entity hazard3_irq_ctrl is
         rst_n         : in std_logic;
 
         -- CSR interface
-        addr        : in  std_logic_vector(11 downto 0);
+        addr        : in  unsigned(CSR_ADDRESS_WIDTH_C - 1 downto 0);
         wtype       : in  std_logic_vector(1 downto 0);
         wen_m_mode  : in  std_logic;
         ren_m_mode  : in  std_logic;
@@ -319,7 +319,7 @@ begin
 
         rdata <= (others => '0');
 
-        case addr is
+        case to_integer(addr) is
             when CSR_ADDRESSES.CUSTOM_M_MODE.MEIEA =>
                 rdata <= meiea_rdata(index_5bit + 15 downto index_5bit) & 16d"0";
             when CSR_ADDRESSES.CUSTOM_M_MODE.MEIPA => 

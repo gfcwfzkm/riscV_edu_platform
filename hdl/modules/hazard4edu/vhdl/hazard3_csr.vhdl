@@ -9,24 +9,24 @@ entity hazard3_csr is
     generic (
         -- Number of external IRQs. Note that if EXTENSION_XH3IRQ (IRQ Controller) is disabled, then
         -- multiple external interrupts are OR'd into mip.meip
-        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C  := 1;
-        IRQ_PRIORITY_BITS   : integer range 0 to 4 := 0;
-        IRQ_INPUTREG_BYPASS : boolean_vector(NUMBER_OF_IRQs - 1 downto 0) := (others => FALSE);
+        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C         := 1;
+        IRQ_PRIORITY_BITS   : integer range 0 to 4                           := 0;
+        IRQ_INPUTREG_BYPASS : boolean_vector(NUMBER_OF_IRQs - 1 downto 0)    := (others => FALSE);
         MTVEC_INIT          : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0) := x"0000_0000";
-        CSR_M_MANDATORY     : boolean := FALSE;
-        CSR_M_TRAP          : boolean := FALSE;
-        CSR_COUNTER         : boolean := FALSE;
-        PMP_REGIONS         : natural := 0;
-        EXTENSION_A         : boolean := FALSE;
-        EXTENSION_C         : boolean := FALSE;
-        EXTENSION_E         : boolean := FALSE;
-        EXTENSION_M         : boolean := FALSE;
-        MUL_FAST            : boolean := FALSE;
-        MULH_FAST           : boolean := FALSE;
-        EXTENSION_XH3PMPM   : boolean := FALSE;
-        EXTENSION_XH3IRQ    : boolean := FALSE;
-        U_MODE              : boolean := FALSE;
-        DEBUG_SUPPORT       : boolean := FALSE
+        CSR_M_MANDATORY     : boolean                                        := FALSE;
+        CSR_M_TRAP          : boolean                                        := FALSE;
+        CSR_COUNTER         : boolean                                        := FALSE;
+        PMP_REGIONS         : natural                                        := 0;
+        EXTENSION_A         : boolean                                        := FALSE;
+        EXTENSION_C         : boolean                                        := FALSE;
+        EXTENSION_E         : boolean                                        := FALSE;
+        EXTENSION_M         : boolean                                        := FALSE;
+        MUL_FAST            : boolean                                        := FALSE;
+        MULH_FAST           : boolean                                        := FALSE;
+        EXTENSION_XH3PMPM   : boolean                                        := FALSE;
+        EXTENSION_XH3IRQ    : boolean                                        := FALSE;
+        U_MODE              : boolean                                        := FALSE;
+        DEBUG_SUPPORT       : boolean                                        := FALSE
     );
     port (
         clk             : in std_logic;
@@ -58,7 +58,7 @@ entity hazard3_csr is
 	    -- - Illegal CSR accesses produce trap entry
 	    -- - Trap entry (not necessarily caused by CSR access) gates outgoing bus accesses
 	    -- - Through-paths from e.g. hready to htrans are problematic for timing/implementation
-        addr                    : in  std_logic_vector(CSR_ADDRESS_WIDTH_C - 1 downto 0);
+        addr                    : in  unsigned(CSR_ADDRESS_WIDTH_C - 1 downto 0);
         wdata                   : in  std_logic_vector(DATA_WIDTH_C - 1 downto 0);
         wen                     : in  std_logic;
         wen_soon                : in  std_logic; -- wen will be asserted once some stall condition clears
@@ -121,13 +121,13 @@ entity hazard3_csr is
         irq_timer       : in std_logic;
 
         -- PMP config interface
-        pmp_cfg_addr  : out std_logic_vector(CSR_ADDRESS_WIDTH_C - 1 downto 0);
+        pmp_cfg_addr  : out unsigned(CSR_ADDRESS_WIDTH_C - 1 downto 0);
         pmp_cfg_wen   : out std_logic;
         pmp_cfg_wdata : out std_logic_vector(DATA_WIDTH_C - 1 downto 0);
         pmp_cfg_rdata : in  std_logic_vector(DATA_WIDTH_C - 1 downto 0);
 
         -- Trigger config interface 
-        trig_cfg_addr  : out std_logic_vector(CSR_ADDRESS_WIDTH_C - 1 downto 0);
+        trig_cfg_addr  : out unsigned(CSR_ADDRESS_WIDTH_C - 1 downto 0);
         trig_cfg_wen   : out std_logic;
         trig_cfg_wdata : out std_logic_vector(DATA_WIDTH_C - 1 downto 0);
         trig_cfg_rdata : in  std_logic_vector(DATA_WIDTH_C - 1 downto 0);
@@ -200,7 +200,8 @@ architecture rtl of hazard3_csr is
         others => (others => '0')
     );
 
-    constant C_SHIFT : integer := 2 - (1 when EXTENSION_C else 0);
+    constant C_SHIFT : integer := 2 - to_integer(unsigned(std_logic_vector'("00" & to_std_logic(EXTENSION_C))));
+    constant DEBUG_DPC_MASK : std_logic_vector(DATA_WIDTH_C - 1 downto 0) :=  x"FFFF_FFFF" sll C_SHIFT;
 
     signal wdata_update     : std_logic_vector(DATA_WIDTH_C - 1 downto 0);
     signal enter_debug_mode : std_logic;
@@ -334,7 +335,7 @@ begin
     debug_suppresses_trap_update <= to_std_logic(DEBUG_SUPPORT) and (debug_mode_reg or enter_debug_mode);
     trapreg_update <= trap_enter_vld and trap_enter_rdy and not debug_suppresses_trap_update;
     trapreg_update_enter <= trapreg_update and to_std_logic(except /= EXCEPT_C.RETURN_FROM_M_MODE) and to_std_logic(except /= EXCEPT_C.EXCEPTION_REFETCH);
-    trapreg_update_exit <= trapreg_update and to_std_logic(except /= EXCEPT_C.RETURN_FROM_M_MODE);
+    trapreg_update_exit <= trapreg_update and to_std_logic(except = EXCEPT_C.RETURN_FROM_M_MODE);
 
     -- Local monitor flag cleared on trap exit (but not on debug-mode exit, to
     -- permit stepping through LR/SC sequences):
@@ -425,7 +426,7 @@ begin
     end process;
 
     -- Trap vector base
-    mtvec <= mtvec_reg and std_logic_vector(shift_left(to_unsigned(1, DATA_WIDTH_C), 2));
+    mtvec <= mtvec_reg and x"FFFF_FFFC";
     irq_vector_enable <= mtvec_reg(0);
 
     process(clk, rst_n) begin
@@ -443,7 +444,7 @@ begin
     end process;
 
     process(clk, rst_n) is
-        constant MEPC_MASK : std_logic_vector(mepc_reg'range) := (ADDRESS_WIDTH_C - 1 downto 2 => '0') & to_std_logic(EXTENSION_C) & '0';
+        constant MEPC_MASK : std_logic_vector(mepc_reg'range) := (ADDRESS_WIDTH_C - 1 downto 2 => '1') & to_std_logic(EXTENSION_C) & '0';
     begin
         if ?? (not rst_n) then
             mepc_reg <= (others => '0');
@@ -542,8 +543,8 @@ begin
                 wen_m_mode           => wen_m_mode,
                 ren_m_mode           => ren_m_mode,
                 wdata_raw            => wdata,
-                wdata                => wdata,
-                rdata                => rdata,
+                wdata                => wdata_update,
+                rdata                => irq_ctrl_rdata,
                 trapreg_update_enter => trapreg_update_enter,
                 trapreg_update_exit  => trapreg_update_exit,
                 trap_entry_is_eirq   => trap_entry_is_eirq,
@@ -574,8 +575,8 @@ begin
     
     h3misa_info <= H3MISA_CUSTOM_LENGTH & H3MISA_STANDARD_LENGTH;
 
-    h3misa_rdata <= H3MISA_STANDARD_EXTENSION(to_integer(unsigned(wdata(1 downto 0))))  when ?? (not wdata(10)) else
-                    h3misa_info(to_integer(unsigned(wdata(0))))                         when ?? (not wdata(8))  else
+    h3misa_rdata <= H3MISA_STANDARD_EXTENSION(to_integer(unsigned(wdata(1 downto 0))))      when ?? (not wdata(10)) else
+                    h3misa_info(to_integer(unsigned(std_logic_vector'("00" & wdata(0)))))   when ?? (not wdata(8))  else
                     H3MISA_CUSTOM_EXTENSIONS(to_integer(unsigned(wdata(2 downto 0))));
 
     ---------------------------------------------------------------------------
@@ -604,7 +605,7 @@ begin
                     (minstreth_reg, minstret_reg) <= (minstreth_reg & minstret_reg) + 1;
                 end if;
                 if ?? wen_m_mode then
-                    case addr is
+                    case to_integer(addr) is
                         when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCYCLEH   => mcycleh_reg <= unsigned(wdata_update);
                         when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCYCLE    => mcycle_reg <= unsigned(wdata_update);
                         when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MINSTRETH => minstreth_reg <= unsigned(wdata_update);
@@ -669,7 +670,7 @@ begin
     -- exception return address when entering Debug Mode, and whilst in Debug
     -- Mode we can write to it as though it were a CSR. Note only IALIGN'd values
     -- can be written to dpc.
-    debug_dpc_wdata <= (wdata_update when ?? debug_mode_reg else mepc_in) and (x"FFFF_FFFF" sll C_SHIFT);
+    debug_dpc_wdata <= (wdata_update and DEBUG_DPC_MASK) when ?? debug_mode_reg else (mepc_in and DEBUG_DPC_MASK);
     debug_dpc_wen <= (wen_raw and to_std_logic(addr = CSR_ADDRESSES.D_MODE.DPC)) when ?? debug_mode_reg else enter_debug_mode;
 
     dbg_data0_wdata <= wdata;
@@ -708,7 +709,7 @@ begin
         pmp_cfg_wen <= '0';
         trig_cfg_wen <= '0';
 
-        case addr is
+        case to_integer(addr) is
             -------------------------------------------------------------------
             -- Mandatory CSRs
             when CSR_ADDRESSES.MACHINE_TRAP_SETUP.MISA =>
@@ -755,17 +756,9 @@ begin
                     );
                 end if;
             when CSR_ADDRESSES.MACHINE_TRAP_SETUP.MSTATUSH => 
-                if CSR_M_MANDATORY or CSR_M_TRAP then
-                    decode_match <= match_mrw;
-                end if;
-            when CSR_ADDRESSES.OTHER_STANDARD_M_MODE.MENVCFGH => 
-                if U_MODE then
-                    decode_match <= match_mrw;
-                end if;
-            when CSR_ADDRESSES.OTHER_STANDARD_M_MODE.MENVCFG => 
-                if U_MODE then
-                    decode_match <= match_mrw;
-                end if;
+                decode_match <= match_mrw when CSR_M_MANDATORY or CSR_M_TRAP;
+            when CSR_ADDRESSES.OTHER_STANDARD_M_MODE.MENVCFG | CSR_ADDRESSES.OTHER_STANDARD_M_MODE.MENVCFGH => 
+                decode_match <= match_mrw when U_MODE;
             -------------------------------------------------------------------
             -- Trap-handling CSRs
             when CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MSCRATCH => 
@@ -812,12 +805,12 @@ begin
                 end if;
             -------------------------------------------------------------------
             -- Counter CSRs
-            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER3 to CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER31 =>
-                decode_match <= match_mrw when CSR_COUNTER;
-            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER3H to CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER31H =>
-                decode_match <= match_mrw when CSR_COUNTER;
-            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMEVENT3 to CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMEVENT31 =>
-                decode_match <= match_mrw when CSR_COUNTER;
+            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER3  to CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER31  | 
+                 CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER3H to CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMCOUNTER31H |
+                 CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMEVENT3    to CSR_ADDRESSES.PERFORMANCE_COUNTERS.MHPMEVENT31   =>
+                if CSR_COUNTER then
+                    decode_match <= match_mrw;
+                end if;
             when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCOUNTINHIBIT => 
                 if CSR_COUNTER then
                     decode_match <= match_mrw;
@@ -851,8 +844,8 @@ begin
                 if CSR_COUNTER then
                     decode_match <= match_mrw;
                     rdata <= (
-                        2 => mcounteren_ir_reg,
-                        1 => mcounteren_tm_reg,
+                        2 => mcounteren_tm_reg,
+                        1 => mcounteren_ir_reg,
                         0 => mcounteren_cy_reg,
                         others => '0'
                     );
@@ -923,11 +916,11 @@ begin
                     decode_match <= match_drw;
                     rdata <= (
                         31 downto 28 => x"4",       -- xdebugver = 4, for 0.13.2 debug spec
-                        13 => dcsr_ebreakm_reg,
-                        10 => dcsr_ebreaku_reg,
-                        8 => '1',                   -- stopcount = 1, no counter increment in debug mode
-                        7 => '1',                   -- stoptime = 1, core-local timer increment in debug mode
-                        6 => dcsr_cause_reg,
+                        14 => dcsr_ebreakm_reg,
+                        11 => dcsr_ebreaku_reg,
+                        10 => '1',                   -- stopcount = 1, no counter increment in debug mode
+                        9 => '1',                   -- stoptime = 1, core-local timer increment in debug mode
+                        8 downto 6 => dcsr_cause_reg,
                         2 => dcsr_step_reg,
                         1 => m_mode_reg,
                         0 => m_mode_reg,
@@ -1184,7 +1177,7 @@ begin
     trig_cfg_addr <= addr;
     trig_cfg_wdata <= wdata_update;
     trig_m_en <= tcontrol_mte_reg;
-    m_mode_execution <= '1' when U_MODE else debug_mode_reg or m_mode_reg;
+    m_mode_execution <= '1' when not U_MODE else debug_mode_reg or m_mode_reg;
     m_mode_trap_entry <= '1'             when not U_MODE                           else
                          mstatus_mpp_reg when except = EXCEPT_C.RETURN_FROM_M_MODE else
                          '1';

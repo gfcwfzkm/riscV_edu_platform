@@ -458,10 +458,55 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
 end
 
 if test "$check_mode" = default
-    set -l hazard_vhdl_dep "$repo_root/hdl/modules/hazard4edu/vhdl/hazard3_pkg.vhdl"
+    
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
     set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
 
-    
+    # Include dependencies required when EXTENSION_XH3IRQ=true instantiates hazard3_irq_ctrl
+    set -l hazard_csr_vhdl_dep \
+        "$hazard_vhdl/hazard3_pkg.vhdl" \
+        "$hazard_vhdl/arith/hazard3_onehot_priority.vhdl" \
+        "$hazard_vhdl/arith/hazard3_onehot_priority_dynamic.vhdl" \
+        "$hazard_vhdl/arith/hazard3_onehot_encode.vhdl" \
+        "$hazard_vhdl/hazard3_irq_ctrl.vhdl"
+
+    set -l hazard_csr_verilog_dep \
+        "$hazard_verilog/arith/hazard3_onehot_priority.v" \
+        "$hazard_verilog/arith/hazard3_onehot_priority_dynamic.v" \
+        "$hazard_verilog/arith/hazard3_onehot_encode.v" \
+        "$hazard_verilog/hazard3_irq_ctrl.v"
+
+    # 1. Default baseline (all features disabled / default values)
+    check_assert_reset_pair hazard3_csr_default hazard3_csr \
+        "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_csr.vhdl" \
+        "$hazard_csr_verilog_dep $hazard_verilog/hazard3_csr.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog"
+    or set failed 1
+
+    # 2. Sensible orthogonal configurations covering all RTL branches & interactions:
+    # - Config 1: Mandatory CSRs only + RV32E + C + M (with Zkt=0 via MUL_FAST=0, MULH_FAST=0)
+    # - Config 2: Trap CSRs only + Non-MISA extensions + Xh3irq generate block active
+    # - Config 3: Mandatory + Trap (enables MSCRATCH) + Counters + U_MODE (enables MCOUNTEREN & U-RO CSRs) + PMP (standard)
+    # - Config 4: Debug + Trap + U_MODE + C (tests C_SHIFT=1 in DPC & MEPC_MASK) + PMP with Xh3pmpm
+    # - Config 5: Maximal feature set enabled (tests Zkt=1 via MUL_FAST=1, MULH_FAST=1, plus all concurrent paths)
+    for configuration in \
+        'CSR_M_MANDATORY=true CSR_M_TRAP=false EXTENSION_C=true EXTENSION_E=true EXTENSION_M=true MUL_FAST=false MULH_FAST=false' \
+        'CSR_M_MANDATORY=false CSR_M_TRAP=true EXTENSION_XH3IRQ=true EXTENSION_A=true' \
+        'CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=true U_MODE=true PMP_REGIONS=4 EXTENSION_XH3PMPM=false' \
+        'CSR_M_MANDATORY=true CSR_M_TRAP=true U_MODE=true DEBUG_SUPPORT=true EXTENSION_C=true PMP_REGIONS=4 EXTENSION_XH3PMPM=true' \
+        'CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=true PMP_REGIONS=4 EXTENSION_A=true EXTENSION_C=true EXTENSION_E=false EXTENSION_M=true MUL_FAST=true MULH_FAST=true EXTENSION_XH3PMPM=true EXTENSION_XH3IRQ=true U_MODE=true DEBUG_SUPPORT=true'
+        
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
+        check_assert_reset_pair "hazard3_csr_$configuration_name" hazard3_csr \
+            "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_csr.vhdl" \
+            "$hazard_csr_verilog_dep $hazard_verilog/hazard3_csr.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$hazard_verilog" \
+            '' '' \
+            "$configuration"
+        or set failed 1
+    end
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere
