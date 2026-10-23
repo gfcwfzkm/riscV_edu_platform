@@ -455,14 +455,8 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
             "$configuration"
         or set failed 1
     end
-end
 
-if test "$check_mode" = default
-    
-    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
-    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
-
-    # Include dependencies required when EXTENSION_XH3IRQ=true instantiates hazard3_irq_ctrl
+        # Include dependencies required when EXTENSION_XH3IRQ=true instantiates hazard3_irq_ctrl
     set -l hazard_csr_vhdl_dep \
         "$hazard_vhdl/hazard3_pkg.vhdl" \
         "$hazard_vhdl/arith/hazard3_onehot_priority.vhdl" \
@@ -493,9 +487,9 @@ if test "$check_mode" = default
     for configuration in \
         'CSR_M_MANDATORY=true CSR_M_TRAP=false EXTENSION_C=true EXTENSION_E=true EXTENSION_M=true MUL_FAST=false MULH_FAST=false' \
         'CSR_M_MANDATORY=false CSR_M_TRAP=true EXTENSION_XH3IRQ=true EXTENSION_A=true' \
-        'CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=true U_MODE=true PMP_REGIONS=4 EXTENSION_XH3PMPM=false' \
-        'CSR_M_MANDATORY=true CSR_M_TRAP=true U_MODE=true DEBUG_SUPPORT=true EXTENSION_C=true PMP_REGIONS=4 EXTENSION_XH3PMPM=true' \
-        'CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=true PMP_REGIONS=4 EXTENSION_A=true EXTENSION_C=true EXTENSION_E=false EXTENSION_M=true MUL_FAST=true MULH_FAST=true EXTENSION_XH3PMPM=true EXTENSION_XH3IRQ=true U_MODE=true DEBUG_SUPPORT=true'
+        'CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=true U_MODE=true PMP_REGIONS=1 EXTENSION_XH3PMPM=false' \
+        'CSR_M_MANDATORY=true CSR_M_TRAP=true U_MODE=true DEBUG_SUPPORT=true EXTENSION_C=true PMP_REGIONS=2 EXTENSION_XH3PMPM=true' \
+        'CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=true PMP_REGIONS=2 EXTENSION_A=true EXTENSION_C=true EXTENSION_E=false EXTENSION_M=true MUL_FAST=true MULH_FAST=true EXTENSION_XH3PMPM=true EXTENSION_XH3IRQ=true U_MODE=true DEBUG_SUPPORT=true'
         
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
         check_assert_reset_pair "hazard3_csr_$configuration_name" hazard3_csr \
@@ -507,6 +501,30 @@ if test "$check_mode" = default
             "$configuration"
         or set failed 1
     end
+end
+
+if test "$check_mode" = default
+    
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
+    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
+
+    # Include dependencies required when EXTENSION_XH3IRQ=true instantiates hazard3_irq_ctrl
+    set -l hazard_csr_vhdl_dep \
+        "$hazard_vhdl/hazard3_pkg.vhdl" \
+        "$hazard_vhdl/hazard3_instr_decompress.vhdl" \
+        "$hazard_vhdl/hazard3_decode.vhdl"
+
+    set -l hazard_csr_verilog_dep \
+        "$hazard_vhdl/hazard3_instr_decompress.v" \
+        "$hazard_verilog/hazard3_decode.v"
+
+    # 1. Default baseline (all features disabled / default values)
+    check_assert_reset_pair hazard3_frontend hazard3_frontend \
+        "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_frontend.vhdl" \
+        "$hazard_csr_verilog_dep $hazard_verilog/hazard3_frontend.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog"
+    or set failed 1
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere

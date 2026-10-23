@@ -13,18 +13,18 @@ entity hazard3_csr is
         IRQ_PRIORITY_BITS   : integer range 0 to 4                           := 0;
         IRQ_INPUTREG_BYPASS : boolean_vector(NUMBER_OF_IRQs - 1 downto 0)    := (others => FALSE);
         MTVEC_INIT          : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0) := x"0000_0000";
-        CSR_M_MANDATORY     : boolean                                        := FALSE;
-        CSR_M_TRAP          : boolean                                        := FALSE;
+        CSR_M_MANDATORY     : boolean                                        := TRUE;
+        CSR_M_TRAP          : boolean                                        := TRUE;
         CSR_COUNTER         : boolean                                        := FALSE;
         PMP_REGIONS         : natural                                        := 0;
-        EXTENSION_A         : boolean                                        := FALSE;
-        EXTENSION_C         : boolean                                        := FALSE;
-        EXTENSION_E         : boolean                                        := FALSE;
-        EXTENSION_M         : boolean                                        := FALSE;
+        EXTENSION_A         : boolean                                        := TRUE;
+        EXTENSION_C         : boolean                                        := TRUE;
+        EXTENSION_E         : boolean                                        := TRUE;
+        EXTENSION_M         : boolean                                        := TRUE;
         MUL_FAST            : boolean                                        := FALSE;
         MULH_FAST           : boolean                                        := FALSE;
-        EXTENSION_XH3PMPM   : boolean                                        := FALSE;
-        EXTENSION_XH3IRQ    : boolean                                        := FALSE;
+        EXTENSION_XH3PMPM   : boolean                                        := TRUE;
+        EXTENSION_XH3IRQ    : boolean                                        := TRUE;
         U_MODE              : boolean                                        := FALSE;
         DEBUG_SUPPORT       : boolean                                        := FALSE
     );
@@ -172,7 +172,7 @@ architecture rtl of hazard3_csr is
     );
 
     constant EXTENSION_ZMMUL : boolean :=  EXTENSION_M;
-    constant EXTENSION_ZKT   : boolean := not (EXTENSION_M and not MUL_FAST and not MULH_FAST);
+    constant EXTENSION_ZKT   : boolean := not (EXTENSION_M and not (MUL_FAST and MULH_FAST));
     constant EXTENSION_I     : boolean := not EXTENSION_E;
 
     constant H3MISA_STANDARD_EXTENSION : std_logic_array_t(0 to 3)(DATA_WIDTH_C - 1 downto 0) := (
@@ -194,9 +194,9 @@ architecture rtl of hazard3_csr is
     );
 
     constant H3MISA_CUSTOM_EXTENSIONS : std_logic_array_t(0 to 7)(DATA_WIDTH_C - 1 downto 0) := (
-        5 => (24 => to_std_logic(EXTENSION_XH3PMPM), others => '0'),
-        6 => (24 => to_std_logic(EXTENSION_XH3IRQ), others => '0'),
-        7 => (24 => to_std_logic(CSR_M_MANDATORY), others => '0'),
+        0 => (24 => to_std_logic(CSR_M_MANDATORY), others => '0'),
+        1 => (24 => to_std_logic(EXTENSION_XH3IRQ), others => '0'),
+        2 => (24 => to_std_logic(EXTENSION_XH3PMPM), others => '0'),
         others => (others => '0')
     );
 
@@ -245,8 +245,8 @@ architecture rtl of hazard3_csr is
     signal trap_entry_is_eirq : std_logic;
     signal external_irq_pending_reg : std_logic;
 
-    signal h3misa_info : std_logic_array_t(0 to 1)(DATA_WIDTH_C - 1 downto 0);
-    signal h3misa_rdata : std_logic_vector(DATA_WIDTH_C - 1 downto 0);
+    signal h3misa_information : std_logic_array_t(0 to 1)(DATA_WIDTH_C - 1 downto 0);
+    signal h3misa_rdata       : std_logic_vector(DATA_WIDTH_C - 1 downto 0);
 
     signal mcountinhibit_cy_reg  : std_logic;
     signal mcountinhibit_ir_reg  : std_logic;
@@ -573,10 +573,11 @@ begin
     ---------------------------------------------------------------------------
     -- Custom identification CSRs
     
-    h3misa_info <= H3MISA_CUSTOM_LENGTH & H3MISA_STANDARD_LENGTH;
+    h3misa_information(1) <= H3MISA_CUSTOM_LENGTH;
+    h3misa_information(0) <= H3MISA_STANDARD_LENGTH;
 
     h3misa_rdata <= H3MISA_STANDARD_EXTENSION(to_integer(unsigned(wdata(1 downto 0))))      when ?? (not wdata(10)) else
-                    h3misa_info(to_integer(unsigned(std_logic_vector'("00" & wdata(0)))))   when ?? (not wdata(8))  else
+                    h3misa_information(to_integer(unsigned(std_logic_vector'("00" & wdata(0)))))   when ?? (not wdata(8))  else
                     H3MISA_CUSTOM_EXTENSIONS(to_integer(unsigned(wdata(2 downto 0))));
 
     ---------------------------------------------------------------------------
@@ -632,8 +633,8 @@ begin
         elsif rising_edge(clk) then
             if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN and CSR_COUNTER and U_MODE then
                 mcounteren_cy_reg <= wdata_update(0);
-                mcounteren_ir_reg <= wdata_update(1);
-                mcounteren_tm_reg <= wdata_update(2);
+                mcounteren_tm_reg <= wdata_update(1);
+                mcounteren_ir_reg <= wdata_update(2);
             end if;
         end if;
     end process;
@@ -655,13 +656,20 @@ begin
             dcsr_step_reg <= '0';
             dcsr_cause_reg <= (others => '0');
         elsif rising_edge(clk) then
-            if DEBUG_SUPPORT and debug_mode_reg = '1' and wen_raw = '1' and addr = CSR_ADDRESSES.D_MODE.DCSR then
-                dcsr_ebreakm_reg <= wdata_update(15);
-                dcsr_ebreaku_reg <= wdata_update(12) when U_MODE else '0';
-                dcsr_step_reg <= wdata_update(2);
-            end if;
-            if DEBUG_SUPPORT and enter_debug_mode = '1' then
-                dcsr_cause_reg <= dcause_next;
+            if DEBUG_SUPPORT then
+                if debug_mode_reg = '1' and wen_raw = '1' and addr = CSR_ADDRESSES.D_MODE.DCSR then
+                    dcsr_ebreakm_reg <= wdata_update(15);
+                    dcsr_ebreaku_reg <= wdata_update(12) when U_MODE else '0';
+                    dcsr_step_reg <= wdata_update(2);
+                end if;
+                if ?? enter_debug_mode then
+                    dcsr_cause_reg <= dcause_next;
+                end if;
+            else
+                dcsr_ebreakm_reg <= '0';
+                dcsr_ebreaku_reg <= '0';
+                dcsr_step_reg <= '0';
+                dcsr_cause_reg <= (others => '0');
             end if;
         end if;
     end process;
@@ -691,6 +699,9 @@ begin
                 elsif ?? trapreg_update_exit then
                     tcontrol_mte_reg <= tcontrol_mpte_reg;
                 end if;
+            else
+                tcontrol_mpte_reg <= '0';
+                tcontrol_mte_reg <= '0';
             end if;
         end if;
     end process;
@@ -756,9 +767,13 @@ begin
                     );
                 end if;
             when CSR_ADDRESSES.MACHINE_TRAP_SETUP.MSTATUSH => 
-                decode_match <= match_mrw when CSR_M_MANDATORY or CSR_M_TRAP;
+                if CSR_M_MANDATORY or CSR_M_TRAP then
+                    decode_match <= match_mrw;
+                end if;
             when CSR_ADDRESSES.OTHER_STANDARD_M_MODE.MENVCFG | CSR_ADDRESSES.OTHER_STANDARD_M_MODE.MENVCFGH => 
-                decode_match <= match_mrw when U_MODE;
+                if U_MODE then
+                    decode_match <= match_mrw;
+                end if;
             -------------------------------------------------------------------
             -- Trap-handling CSRs
             when CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MSCRATCH => 
@@ -844,8 +859,8 @@ begin
                 if CSR_COUNTER then
                     decode_match <= match_mrw;
                     rdata <= (
-                        2 => mcounteren_tm_reg,
-                        1 => mcounteren_ir_reg,
+                        2 => mcounteren_ir_reg,
+                        1 => mcounteren_tm_reg,
                         0 => mcounteren_cy_reg,
                         others => '0'
                     );
@@ -916,8 +931,8 @@ begin
                     decode_match <= match_drw;
                     rdata <= (
                         31 downto 28 => x"4",       -- xdebugver = 4, for 0.13.2 debug spec
-                        14 => dcsr_ebreakm_reg,
-                        11 => dcsr_ebreaku_reg,
+                        15 => dcsr_ebreakm_reg,
+                        12 => dcsr_ebreaku_reg,
                         10 => '1',                   -- stopcount = 1, no counter increment in debug mode
                         9 => '1',                   -- stoptime = 1, core-local timer increment in debug mode
                         8 downto 6 => dcsr_cause_reg,
@@ -1021,6 +1036,13 @@ begin
                 end if;
 
                 pending_dbg_resume_prev_reg <= pending_dbg_resume;
+
+            else
+                have_just_reset_reg <= to_std_logic(DEBUG_SUPPORT);
+                dbg_req_halt_on_reset_sticky_reg <= '0';
+                step_halt_req_reg <= '0';
+                dbg_req_resume_prev_reg <= '0';
+                pending_dbg_resume_prev_reg <= '0';
             end if;
         end if;
     end process;
@@ -1066,8 +1088,8 @@ begin
     -- exception (or potential exception) in M, and debug mode entry.
     want_halt_irq <= want_halt_irq_if_no_exception and not halt_delayed_by_exception;
                   
-    dcause_next <= 3x"1" when except = EXCEPT_C.EBREAKPOINT                            else
-                   3x"2" when except = EXCEPT_C.EBREAKPOINT and except_to_d_mode = '1' else
+    dcause_next <= 3x"2" when except = EXCEPT_C.EBREAKPOINT and except_to_d_mode = '1' else
+                   3x"1" when except = EXCEPT_C.EBREAKPOINT                            else
                    3x"3" when ?? (dbg_req_halt_prev_reg or dbg_req_halt_on_reset)      else
                    3x"4";
 
@@ -1131,7 +1153,7 @@ begin
     trap_addr <= mepc_reg           when except = EXCEPT_C.RETURN_FROM_M_MODE   else
                  debug_dpc_rdata    when except = EXCEPT_C.EXCEPTION_REFETCH    else
                  debug_dpc_rdata    when ?? pending_dbg_resume                  else
-                 mtvec_reg or (26d"0" & vector_sel & "00");
+                 mtvec or (26d"0" & vector_sel & "00");
 
     -- Check for exception-like or IRQ-like trap entry; any debug mode entry takes
     -- priority over any regular trap.
