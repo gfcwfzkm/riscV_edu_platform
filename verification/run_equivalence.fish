@@ -501,6 +501,51 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
             "$configuration"
         or set failed 1
     end
+
+    set -l hazard_csr_vhdl_dep \
+        "$hazard_vhdl/hazard3_pkg.vhdl" \
+        "$hazard_vhdl/hazard3_instr_decompress.vhdl" \
+        "$hazard_vhdl/hazard3_decode.vhdl"
+
+    set -l hazard_csr_verilog_dep \
+        "$hazard_verilog/hazard3_instr_decompress.v" \
+        "$hazard_verilog/hazard3_decode.v"
+
+    # 1. Default baseline (all features disabled / default values)
+    check_assert_reset_pair hazard3_frontend hazard3_frontend \
+        "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_frontend.vhdl" \
+        "$hazard_csr_verilog_dep $hazard_verilog/hazard3_frontend.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog"
+    or set failed 1
+
+    # 2. Orthogonal configurations covering the generate branches and parameter-dependent muxes:
+    # - Config 1: No C/E: no_decompress branch, buf_level/hwvld masking, 32-bit-only alignment
+    # - Config 2: Debug: instruction injection, trigger/check registers (break bits masked with C)
+    # - Config 3: Debug without C: trigger break masks {C,1} = "01"
+    # - Config 4: PMP + U-mode: PMP kill path, check registers without debug, jump_priv propagation
+    # - Config 5: Branch predictor with C: BTB, overhanging branches, hwvld/predbranch marking
+    # - Config 6: Branch predictor without C: BTB with word-aligned instructions only
+    # - Config 7: Maximal feature set enabled (all concurrent paths)
+    for configuration in \
+        'EXTENSION_C=false EXTENSION_E=false' \
+        'DEBUG_SUPPORT=true' \
+        'DEBUG_SUPPORT=true EXTENSION_C=false' \
+        'PMP_REGIONS=1 U_MODE=true' \
+        'BRANCH_PREDICTOR=true' \
+        'BRANCH_PREDICTOR=true EXTENSION_C=false' \
+        'BRANCH_PREDICTOR=true DEBUG_SUPPORT=true PMP_REGIONS=2 U_MODE=true EXTENSION_C=true EXTENSION_E=false EXTENSION_M=true'
+
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
+        check_assert_reset_pair "hazard3_frontend_$configuration_name" hazard3_frontend \
+            "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_frontend.vhdl" \
+            "$hazard_csr_verilog_dep $hazard_verilog/hazard3_frontend.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$hazard_verilog" \
+            '' '' \
+            "$configuration"
+        or set failed 1
+    end
 end
 
 if test "$check_mode" = default
@@ -515,7 +560,7 @@ if test "$check_mode" = default
         "$hazard_vhdl/hazard3_decode.vhdl"
 
     set -l hazard_csr_verilog_dep \
-        "$hazard_vhdl/hazard3_instr_decompress.v" \
+        "$hazard_verilog/hazard3_instr_decompress.v" \
         "$hazard_verilog/hazard3_decode.v"
 
     # 1. Default baseline (all features disabled / default values)
@@ -525,6 +570,34 @@ if test "$check_mode" = default
         "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
         "$hazard_verilog"
     or set failed 1
+
+    # 2. Orthogonal configurations covering the generate branches and parameter-dependent muxes:
+    # - Config 1: No C/E: no_decompress branch, buf_level/hwvld masking, 32-bit-only alignment
+    # - Config 2: Debug: instruction injection, trigger/check registers (break bits masked with C)
+    # - Config 3: Debug without C: trigger break masks {C,1} = "01"
+    # - Config 4: PMP + U-mode: PMP kill path, check registers without debug, jump_priv propagation
+    # - Config 5: Branch predictor with C: BTB, overhanging branches, hwvld/predbranch marking
+    # - Config 6: Branch predictor without C: BTB with word-aligned instructions only
+    # - Config 7: Maximal feature set enabled (all concurrent paths)
+    for configuration in \
+        'EXTENSION_C=false EXTENSION_E=false' \
+        'DEBUG_SUPPORT=true' \
+        'DEBUG_SUPPORT=true EXTENSION_C=false' \
+        'PMP_REGIONS=1 U_MODE=true' \
+        'BRANCH_PREDICTOR=true' \
+        'BRANCH_PREDICTOR=true EXTENSION_C=false' \
+        'BRANCH_PREDICTOR=true DEBUG_SUPPORT=true PMP_REGIONS=2 U_MODE=true EXTENSION_C=true EXTENSION_E=false EXTENSION_M=true'
+
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
+        check_assert_reset_pair "hazard3_frontend_$configuration_name" hazard3_frontend \
+            "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_frontend.vhdl" \
+            "$hazard_csr_verilog_dep $hazard_verilog/hazard3_frontend.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$hazard_verilog" \
+            '' '' \
+            "$configuration"
+        or set failed 1
+    end
 end
 
 # We done! Print the result and return non-zero if a fail occurred somewhere

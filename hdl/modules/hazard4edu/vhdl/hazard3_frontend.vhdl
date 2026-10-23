@@ -331,7 +331,7 @@ begin
     FIFO_UPDATE : process (clk, rst_n) is
     begin
         if ?? (not rst_n) then
-            for i in 0 to FIFO_DEPTH - 2 loop
+            for i in 0 to FIFO_DEPTH - 1 loop
                 fifo_mem_reg(i) <= (others => '0');
                 fifo_predbranch_reg(i) <= (others => '0');
                 fifo_err_reg(i) <= '0';
@@ -339,7 +339,6 @@ begin
                 fifo_break_d_mode_reg(i) <= (others => '0');
             end loop;
             fifo_valid_hw_reg <= (others => (others => '0'));
-            fifo_valid_hw_reg(FIFO_DEPTH) <= (others => '0');
         elsif rising_edge(clk) then
             for i in 0 to FIFO_DEPTH - 1 loop
                 if ?? (fifo_pop or (fifo_push and not fifo_valid_reg(i))) then
@@ -351,7 +350,8 @@ begin
                 end if;
                 fifo_valid_hw_reg(i) <= (others => '0')          when ?? jump_now                                              else
                                         fifo_valid_hw_reg(i + 1) when ?? (fifo_valid_reg(i + 1) and fifo_pop)                  else
-                                        mem_data_hwvld_reg       when ?? (fifo_valid_reg(i) and fifo_pop and fifo_push)        else
+                                        mem_data_hwvld_reg and (1 downto 0 => fifo_push)
+                                                                 when ?? (fifo_valid_reg(i) and fifo_pop)                      else
                                         fifo_valid_hw_reg(i)     when ?? fifo_valid_reg(i)                                     else
                                         mem_data_hwvld_reg       when ?? (fifo_push and not fifo_pop and fifo_valid_m1_reg(i)) else
                                         (others => '0');
@@ -440,7 +440,7 @@ begin
     btb_match_now <= btb_match_current_addr or btb_prev_start_of_overhanging_reg;
 
     -- Post-increment if jump request is going straight through
-    jump_target_post_increment <= (jump_target(jump_target'length - 1 downto 2) & "00") + 32d"2" when ?? (mem_addr_rdy and not mem_addr_hold_reg) else (jump_target(jump_target'length - 1 downto 2) & "00");
+    jump_target_post_increment <= (jump_target(jump_target'length - 1 downto 2) & "00") + 32d"4" when ?? (mem_addr_rdy and not mem_addr_hold_reg) else (jump_target(jump_target'length - 1 downto 2) & "00");
     
     process(clk, rst_n) begin
         if ?? (not rst_n) then
@@ -453,7 +453,7 @@ begin
                 fetch_addr_reg <= jump_target_post_increment;
                 fetch_priv_reg <= jump_priv when U_MODE else '1';
                 btb_prev_start_of_overhanging_reg <= '0';
-            elsif ?? (mem_addr_vld_reg and mem_addr_rdy) then
+            elsif ?? (mem_addr_vld and mem_addr_rdy) then
                 if btb_match_now = '1' and BRANCH_PREDICTOR then
                     fetch_addr_reg <= btb_target_addr(btb_target_addr'length - 1 downto 2) & "00";
                 else
@@ -532,7 +532,7 @@ begin
             pending_fetches_reg <= (others => '0');
             ctr_flush_pending_reg <= (others => '0');
         elsif rising_edge(clk) then
-            mem_addr_hold_reg <= mem_addr_vld_reg and not mem_addr_rdy;
+            mem_addr_hold_reg <= mem_addr_vld and not mem_addr_rdy;
             pending_fetches_reg <= pending_fetches_next;
             if ?? jump_now then
                 ctr_flush_pending_reg <= pending_fetches_reg - 1 when ?? mem_data_vld else pending_fetches_reg;
@@ -548,6 +548,12 @@ begin
             mem_aph_hwvld_reg <= (others => '1');
             mem_data_predbranch_reg <= (others => '0');
         elsif rising_edge(clk) then
+            if not EXTENSION_C then
+                -- Without C these never leave their reset value. Assign it explicitly,
+                -- otherwise GHDL infers a latch from the reset-only assignment.
+                mem_data_hwvld_reg <= (others => '1');
+                mem_aph_hwvld_reg <= (others => '1');
+            end if;
             if ?? jump_now then
                 if EXTENSION_C then
                     if ?? mem_addr_rdy then
@@ -558,7 +564,7 @@ begin
                     end if;
                 end if;
                 mem_data_predbranch_reg <= (others => '0');
-            elsif ?? (mem_addr_vld_reg and mem_addr_rdy) then
+            elsif ?? (mem_addr_vld and mem_addr_rdy) then
                 if EXTENSION_C then
                     -- If a predicted-taken branch instruction only spans the first
                     -- half of a word, need to flag the second half as invalid.
@@ -592,7 +598,7 @@ begin
                 check_addr_dph_reg <= (others => '0');
                 check_m_mode_dph_reg <= '0';
             elsif rising_edge(clk) then
-                if ?? (mem_addr_vld_reg and mem_addr_rdy) then
+                if ?? (mem_addr_vld and mem_addr_rdy) then
                     check_addr_dph_reg <= mem_addr;
                     check_m_mode_dph_reg <= mem_priv_reg;
                 end if;
@@ -808,11 +814,11 @@ begin
                 v_rs1_fine := v_rs1_coarse;
         end case?;
 
-        case? to_std_logic(EXTENSION_C) & next_instr is
-            when '1' & "----------------" & OPCODE_C.C_BEQZ => v_rs2_fine := "00000";
-            when '1' & "----------------" & OPCODE_C.C_BNEZ => v_rs2_fine := "00000";
-            when others                                  => v_rs2_fine := v_rs2_coarse;
-        end case?;
+        -- Note: the reference Verilog's c.beqz/c.bnez case items are 35 bits wide
+        -- ({1'b1, 1'bz, 1'bz, 16'hzzzz, RVOPC_C_BEQZ}) while the selector is only
+        -- 33 bits. The selector is zero-extended, so the leading 1'b1 never matches
+        -- and rs2_fine is always rs2_coarse. Mirrored here for equivalence.
+        v_rs2_fine := v_rs2_coarse;
 
         if EXTENSION_E then
             v_rs1_coarse(4) := '0';
