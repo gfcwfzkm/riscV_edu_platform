@@ -93,6 +93,9 @@ function check_assert_reset_pair
             set verilog_value (string join '' -- (count $bypass_bits) "'b" $bypass_bit_string)
             set verilog_chparam "$verilog_chparam chparam -set $verilog_parameter $verilog_value gold;"
             continue
+        else if test "$generic_name" = RESET_VECTOR
+            # Passed as a plain bit string, which GHDL accepts for vector generics
+            set verilog_value "32'b$generic_value_text"
         else if test "$verilog_value" = true
             set verilog_value 1
         else if test "$verilog_value" = false
@@ -373,36 +376,36 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
         or set failed 1
     end
 
-    for extension_a in false true
-        for extension_c in false true
-            for extension_e in false true
-                for extension_m in false true
-                    for csr_m_mandatory in false true
-                        for csr_m_trap in false true
-                            for csr_counter in false true
-                                for u_mode in false true
-                                    for debug_support in false true
-                                        for branch_predictor in false true
-                                            set configuration \
-                                                "EXTENSION_A=$extension_a EXTENSION_C=$extension_c EXTENSION_E=$extension_e EXTENSION_M=$extension_m CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter U_MODE=$u_mode DEBUG_SUPPORT=$debug_support BRANCH_PREDICTOR=$branch_predictor"
-                                            set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0')
-                                            check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
-                                                "$hazard_vhdl_dep $hazard_vhdl/hazard3_decode.vhdl" \
-                                                "$hazard_verilog_dep $hazard_verilog/hazard3_decode.v" \
-                                                "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
-                                                "$hazard_verilog" \
-                                                '' '' \
-                                                "$configuration"
-                                            or set failed 1
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
+    # Configurations:
+    # 1. RV32I without A, C, M (every "else invalid" branch, C forcing d_instr[1:0]); nonzero RESET_VECTOR
+    # 2. RV32EC without A and M, debug + branch predictor
+    # 3. RV32IAM without C, branch predictor
+    set -l decode_configurations
+    for csr_m_mandatory in false true
+        for csr_m_trap in false true
+            for csr_counter in false true
+                for u_mode in false true
+                    set -a decode_configurations \
+                        "CSR_M_MANDATORY=$csr_m_mandatory CSR_M_TRAP=$csr_m_trap CSR_COUNTER=$csr_counter U_MODE=$u_mode"
                 end
             end
         end
+    end
+    set -a decode_configurations \
+        'EXTENSION_A=false EXTENSION_C=false EXTENSION_E=false EXTENSION_M=false CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=false RESET_VECTOR=00100000000000000000001000000000' \
+        'EXTENSION_A=false EXTENSION_C=true EXTENSION_E=true EXTENSION_M=false CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=true BRANCH_PREDICTOR=true' \
+        'EXTENSION_A=true EXTENSION_C=false EXTENSION_E=false EXTENSION_M=true CSR_M_MANDATORY=true CSR_M_TRAP=true CSR_COUNTER=false U_MODE=false DEBUG_SUPPORT=false BRANCH_PREDICTOR=true'
+
+    for configuration in $decode_configurations
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
+        check_assert_reset_pair "hazard3_decode_$configuration_name" hazard3_decode \
+            "$hazard_vhdl_dep $hazard_vhdl/hazard3_decode.vhdl" \
+            "$hazard_verilog_dep $hazard_verilog/hazard3_decode.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$hazard_verilog" \
+            '' '' \
+            "$configuration"
+        or set failed 1
     end
 
     set -l hazard_vhdl_irq_ctrl_dep "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/arith/hazard3_onehot_priority.vhdl $hazard_vhdl/arith/hazard3_onehot_priority_dynamic.vhdl $hazard_vhdl/arith/hazard3_onehot_encode.vhdl"
@@ -546,55 +549,77 @@ if test "$check_mode" = hazard4edu -o "$check_mode" = full
             "$configuration"
         or set failed 1
     end
-end
 
-if test "$check_mode" = default
-    
-    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
-    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
-
-    # Include dependencies required when EXTENSION_XH3IRQ=true instantiates hazard3_irq_ctrl
-    set -l hazard_csr_vhdl_dep \
-        "$hazard_vhdl/hazard3_pkg.vhdl" \
-        "$hazard_vhdl/hazard3_instr_decompress.vhdl" \
-        "$hazard_vhdl/hazard3_decode.vhdl"
-
-    set -l hazard_csr_verilog_dep \
-        "$hazard_verilog/hazard3_instr_decompress.v" \
-        "$hazard_verilog/hazard3_decode.v"
-
-    # 1. Default baseline (all features disabled / default values)
-    check_assert_reset_pair hazard3_frontend hazard3_frontend \
-        "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_frontend.vhdl" \
-        "$hazard_csr_verilog_dep $hazard_verilog/hazard3_frontend.v" \
+    # 1. Default baseline (PMP_REGIONS=0: stubbed-out generate branch)
+    check_assert_reset_pair hazard3_pmp hazard3_pmp \
+        "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/hazard3_pmp.vhdl" \
+        "$hazard_verilog/hazard3_pmp.v" \
         "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
         "$hazard_verilog"
     or set failed 1
 
-    # 2. Orthogonal configurations covering the generate branches and parameter-dependent muxes:
-    # - Config 1: No C/E: no_decompress branch, buf_level/hwvld masking, 32-bit-only alignment
-    # - Config 2: Debug: instruction injection, trigger/check registers (break bits masked with C)
-    # - Config 3: Debug without C: trigger break masks {C,1} = "01"
-    # - Config 4: PMP + U-mode: PMP kill path, check registers without debug, jump_priv propagation
-    # - Config 5: Branch predictor with C: BTB, overhanging branches, hwvld/predbranch marking
-    # - Config 6: Branch predictor without C: BTB with word-aligned instructions only
-    # - Config 7: Maximal feature set enabled (all concurrent paths)
+    # 2. Orthogonal configurations covering the generate branches and grain-dependent masks:
+    # - Config 1: Single NAPOT/NA4 region, G=0
+    # - Config 2: NAPOT with G=1: NA4 unsupported (mapped to OFF), pmpaddr read-back zeroing
+    # - Config 3: NAPOT + TOR: TOR lock propagation to region i-1, prev_ge chaining
+    # - Config 4: TOR only, G=2: regions span two pmpcfg registers, read-back ones-filling
+    # - Config 5: 8 regions, NAPOT + TOR, G=3, Xh3pmpm disabled (pmpcfgm0 reads zero)
+    # - Config 6: Maximum region count (all four pmpcfg registers, full pmpcfgm0 width)
     for configuration in \
-        'EXTENSION_C=false EXTENSION_E=false' \
-        'DEBUG_SUPPORT=true' \
-        'DEBUG_SUPPORT=true EXTENSION_C=false' \
-        'PMP_REGIONS=1 U_MODE=true' \
-        'BRANCH_PREDICTOR=true' \
-        'BRANCH_PREDICTOR=true EXTENSION_C=false' \
-        'BRANCH_PREDICTOR=true DEBUG_SUPPORT=true PMP_REGIONS=2 U_MODE=true EXTENSION_C=true EXTENSION_E=false EXTENSION_M=true'
+        'PMP_REGIONS=1' \
+        'PMP_REGIONS=3 PMP_GRAIN=1' \
+        'PMP_REGIONS=4 PMP_MATCH_TOR=true' \
+        'PMP_REGIONS=5 PMP_MATCH_NAPOT=false PMP_MATCH_TOR=true PMP_GRAIN=2' \
+        'PMP_REGIONS=8 PMP_MATCH_TOR=true PMP_GRAIN=3 EXTENSION_XH3PMPM=false' \
+        'PMP_REGIONS=16 PMP_MATCH_TOR=true'
 
         set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
-        check_assert_reset_pair "hazard3_frontend_$configuration_name" hazard3_frontend \
-            "$hazard_csr_vhdl_dep $hazard_vhdl/hazard3_frontend.vhdl" \
-            "$hazard_csr_verilog_dep $hazard_verilog/hazard3_frontend.v" \
+        check_assert_reset_pair "hazard3_pmp_$configuration_name" hazard3_pmp \
+            "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/hazard3_pmp.vhdl" \
+            "$hazard_verilog/hazard3_pmp.v" \
             "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
             "$hazard_verilog" \
-            '' '' \
+            '' 5 \
+            "$configuration"
+        or set failed 1
+    end
+end
+
+if test "$check_mode" = default
+
+    set -l hazard_vhdl "$repo_root/hdl/modules/hazard4edu/vhdl"
+    set -l hazard_verilog "$repo_root/hdl/modules/hazard4edu/verilog"
+
+    # 1. Default baseline (PMP_REGIONS=0: stubbed-out generate branch)
+    check_assert_reset_pair hazard3_pmp hazard3_pmp \
+        "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/hazard3_pmp.vhdl" \
+        "$hazard_verilog/hazard3_pmp.v" \
+        "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+        "$hazard_verilog"
+    or set failed 1
+
+    # 2. Orthogonal configurations covering the generate branches and grain-dependent masks:
+    # - Config 1: Single NAPOT/NA4 region, G=0
+    # - Config 2: NAPOT with G=1: NA4 unsupported (mapped to OFF), pmpaddr read-back zeroing
+    # - Config 3: NAPOT + TOR: TOR lock propagation to region i-1, prev_ge chaining
+    # - Config 4: TOR only, G=2: regions span two pmpcfg registers, read-back ones-filling
+    # - Config 5: 8 regions, NAPOT + TOR, G=3, Xh3pmpm disabled (pmpcfgm0 reads zero)
+    # - Config 6: Maximum region count (all four pmpcfg registers, full pmpcfgm0 width)
+    for configuration in \
+        'PMP_REGIONS=1' \
+        'PMP_REGIONS=3 PMP_GRAIN=1' \
+        'PMP_REGIONS=4 PMP_MATCH_TOR=true' \
+        'PMP_REGIONS=5 PMP_MATCH_NAPOT=false PMP_MATCH_TOR=true PMP_GRAIN=2' \
+        'PMP_REGIONS=8 PMP_MATCH_TOR=true PMP_GRAIN=3 EXTENSION_XH3PMPM=false' \
+        'PMP_REGIONS=16 PMP_MATCH_TOR=true'
+
+        set configuration_name (string replace -a ' ' '_' -- $configuration | string replace -a '=true' '_1' | string replace -a '=false' '_0' | string replace -a '=' '_')
+        check_assert_reset_pair "hazard3_pmp_$configuration_name" hazard3_pmp \
+            "$hazard_vhdl/hazard3_pkg.vhdl $hazard_vhdl/hazard3_pmp.vhdl" \
+            "$hazard_verilog/hazard3_pmp.v" \
+            "-set-at 1 rst_n 0 -set-at 2 rst_n 1" \
+            "$hazard_verilog" \
+            '' 5 \
             "$configuration"
         or set failed 1
     end
