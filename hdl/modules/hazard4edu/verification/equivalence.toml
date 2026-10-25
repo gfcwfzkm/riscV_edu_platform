@@ -1,0 +1,427 @@
+# Equivalence checks of the hazard4edu core: the VHDL port (vhdl/) against the Hazard3 reference (verilog/).
+# Run with ./run.py, see verification/README.md in the repository root for the format.
+#
+# 'basic' configurations follow the defaults of verilog/hazard3_config.vh unless noted otherwise.
+# Tests without a [test.basic] table use the default generics of the entity / module.
+
+[module]
+include = ["verilog"]
+
+[defaults]
+reset = { rst_n = [0, 1] }
+
+[filesets.pkg]
+vhdl = ["hazard3_pkg.vhdl"]
+
+[filesets.shift_barrel]
+use     = ["pkg"]
+vhdl    = ["arith/hazard3_shift_barrel.vhdl"]
+verilog = ["arith/hazard3_shift_barrel.v"]
+
+[filesets.onehot]
+use     = ["pkg"]
+vhdl    = ["arith/hazard3_onehot_priority.vhdl", "arith/hazard3_onehot_priority_dynamic.vhdl",
+           "arith/hazard3_onehot_encode.vhdl"]
+verilog = ["arith/hazard3_onehot_priority.v", "arith/hazard3_onehot_priority_dynamic.v",
+           "arith/hazard3_onehot_encode.v"]
+
+[filesets.irq_ctrl]
+use     = ["onehot"]
+vhdl    = ["hazard3_irq_ctrl.vhdl"]
+verilog = ["hazard3_irq_ctrl.v"]
+
+[filesets.decode]
+use     = ["pkg"]
+vhdl    = ["hazard3_instr_decompress.vhdl", "hazard3_decode.vhdl"]
+verilog = ["hazard3_instr_decompress.v", "hazard3_decode.v"]
+
+# =============================================================================
+# |                          ARITHMETIC UNITS                                 |
+# =============================================================================
+
+[[test]]
+name  = "hazard3_shift_barrel"
+use   = ["shift_barrel"]
+reset = {}
+
+[[test]]
+name    = "hazard3_branchcmp"
+use     = ["pkg"]
+vhdl    = ["arith/hazard3_branchcmp.vhdl"]
+verilog = ["arith/hazard3_branchcmp.v"]
+reset   = {}
+
+[[test]]
+name    = "hazard3_onehot_encode"
+use     = ["pkg"]
+vhdl    = ["arith/hazard3_onehot_encode.vhdl"]
+verilog = ["arith/hazard3_onehot_encode.v"]
+reset   = {}
+
+[[test]]
+name    = "hazard3_onehot_priority"
+use     = ["pkg"]
+vhdl    = ["arith/hazard3_onehot_priority.vhdl"]
+verilog = ["arith/hazard3_onehot_priority.v"]
+reset   = {}
+
+[[test]]
+name    = "hazard3_onehot_priority_dynamic"
+use     = ["pkg"]
+vhdl    = ["arith/hazard3_onehot_priority.vhdl", "arith/hazard3_onehot_priority_dynamic.vhdl"]
+verilog = ["arith/hazard3_onehot_priority.v", "arith/hazard3_onehot_priority_dynamic.v"]
+reset   = {}
+
+[[test]]
+name    = "hazard3_alu"
+use     = ["shift_barrel"]
+vhdl    = ["arith/hazard3_alu.vhdl"]
+verilog = ["arith/hazard3_alu.v"]
+reset   = {}
+[test.basic]
+EXTENSION_A = true
+[test.extensive.matrix]
+EXTENSION_A = [false, true]
+
+# Every legal combination of the multiplier generics
+[[test]]
+name    = "hazard3_muldiv_seq"
+use     = ["shift_barrel"]
+vhdl    = ["arith/hazard3_muldiv_seq.vhdl"]
+verilog = ["arith/hazard3_muldiv_seq.v"]
+[test.basic]
+MULH_FAST = false
+MUL_FAST  = false
+[test.extensive.matrix]
+MULH_FAST = [false, true]
+MUL_FAST  = [false, true]
+
+# Only instantiated with MUL_FAST, so the basic configuration enables it
+[[test]]
+name       = "hazard3_mul_fast"
+use        = ["shift_barrel"]
+vhdl       = ["arith/hazard3_mul_fast.vhdl"]
+verilog    = ["arith/hazard3_mul_fast.v"]
+sat_cycles = 2
+[test.basic]
+MULH_FAST           = false
+MUL_FAST            = true
+MUL_FASTER          = false
+RISCV_FORMAL_ALTOPS = false
+[[test.extensive.configs]]
+MULH_FAST           = false
+MUL_FAST            = false
+MUL_FASTER          = false
+RISCV_FORMAL_ALTOPS = false
+[[test.extensive.configs]]
+MULH_FAST           = false
+MUL_FAST            = true
+MUL_FASTER          = true
+RISCV_FORMAL_ALTOPS = false
+[[test.extensive.configs]]
+MULH_FAST           = true
+MUL_FAST            = true
+MUL_FASTER          = false
+RISCV_FORMAL_ALTOPS = true
+[[test.extensive.configs]]
+MULH_FAST           = true
+MUL_FAST            = true
+MUL_FASTER          = true
+RISCV_FORMAL_ALTOPS = true
+
+# =============================================================================
+# |                              CORE UNITS                                   |
+# =============================================================================
+
+# The trigger unit is (almost) empty without debug support, so the basic configuration enables it
+[[test]]
+name       = "hazard3_triggers"
+use        = ["pkg"]
+vhdl       = ["hazard3_triggers.vhdl"]
+verilog    = ["hazard3_triggers.v"]
+sat_cycles = 6
+[test.basic]
+DEBUG_SUPPORT       = true
+BREAKPOINT_TRIGGERS = 2
+U_MODE              = false
+EXTENSION_C         = true
+[[test.extensive.configs]]
+DEBUG_SUPPORT       = false
+BREAKPOINT_TRIGGERS = 0
+U_MODE              = false
+EXTENSION_C         = false
+[[test.extensive.configs]]
+DEBUG_SUPPORT       = true
+BREAKPOINT_TRIGGERS = 2
+U_MODE              = false
+EXTENSION_C         = false
+[[test.extensive.configs]]
+DEBUG_SUPPORT       = true
+BREAKPOINT_TRIGGERS = 2
+U_MODE              = true
+EXTENSION_C         = false
+[[test.extensive.configs]]
+DEBUG_SUPPORT       = true
+BREAKPOINT_TRIGGERS = 2
+U_MODE              = true
+EXTENSION_C         = true
+
+[[test]]
+name       = "hazard3_instr_decompress"
+use        = ["pkg"]
+vhdl       = ["hazard3_instr_decompress.vhdl"]
+verilog    = ["hazard3_instr_decompress.v"]
+sat_cycles = 6
+[test.basic]
+EXTENSION_C = true
+EXTENSION_M = true
+[test.extensive.matrix]
+EXTENSION_C = [false, true]
+EXTENSION_M = [false, true]
+
+# Each generic is an elaboration-time constant gating its own part of the decoder, so the full
+# 2^10 product adds nothing over these 16 + 3 configurations. Interactions covered explicitly:
+# - HAVE_CSR = CSR_M_MANDATORY or CSR_M_TRAP or CSR_COUNTER, and U_MODE (ECALL_U vs ECALL_M) only
+#   matters with HAVE_CSR: all 16 combinations in the matrix (other generics at their defaults)
+# - EXTENSION_E checks the register fields of every decoded instruction: with A and M (matrix),
+#   without them (config 2), and disabled with them (config 3)
+# Configurations:
+# 1. RV32I without A, C, M (every "else invalid" branch, C forcing d_instr[1:0]); nonzero RESET_VECTOR
+# 2. RV32EC without A and M, debug + branch predictor
+# 3. RV32IAM without C, branch predictor
+[[test]]
+name    = "hazard3_decode"
+use     = ["pkg"]
+vhdl    = ["hazard3_decode.vhdl"]
+verilog = ["hazard3_decode.v"]
+[test.basic]
+EXTENSION_A      = true
+EXTENSION_C      = true
+EXTENSION_E      = true
+EXTENSION_M      = true
+CSR_M_MANDATORY  = true
+CSR_M_TRAP       = true
+CSR_COUNTER      = false
+U_MODE           = false
+DEBUG_SUPPORT    = false
+BRANCH_PREDICTOR = false
+[test.extensive.matrix]
+CSR_M_MANDATORY  = [false, true]
+CSR_M_TRAP       = [false, true]
+CSR_COUNTER      = [false, true]
+U_MODE           = [false, true]
+[[test.extensive.configs]]
+EXTENSION_A      = false
+EXTENSION_C      = false
+EXTENSION_E      = false
+EXTENSION_M      = false
+CSR_M_MANDATORY  = true
+CSR_M_TRAP       = true
+CSR_COUNTER      = false
+U_MODE           = false
+DEBUG_SUPPORT    = false
+BRANCH_PREDICTOR = false
+RESET_VECTOR     = { vhdl = "00100000000000000000001000000000", verilog = "32'h2000_0200" }
+[[test.extensive.configs]]
+EXTENSION_A      = false
+EXTENSION_C      = true
+EXTENSION_E      = true
+EXTENSION_M      = false
+CSR_M_MANDATORY  = true
+CSR_M_TRAP       = true
+CSR_COUNTER      = false
+U_MODE           = false
+DEBUG_SUPPORT    = true
+BRANCH_PREDICTOR = true
+[[test.extensive.configs]]
+EXTENSION_A      = true
+EXTENSION_C      = false
+EXTENSION_E      = false
+EXTENSION_M      = true
+CSR_M_MANDATORY  = true
+CSR_M_TRAP       = true
+CSR_COUNTER      = false
+U_MODE           = false
+DEBUG_SUPPORT    = false
+BRANCH_PREDICTOR = true
+
+# The VHDL uses descriptive generic names, the reference Verilog the original Hazard3 names.
+# IRQ_INPUTREG_BYPASS lists the IRQs from the highest to the lowest (IRQ 0 is the last element).
+[[test]]
+name        = "hazard3_irq_ctrl"
+use         = ["irq_ctrl"]
+generic_map = { NUMBER_OF_IRQs = "NUM_IRQS", IRQ_INPUTREG_BYPASS = "IRQ_INPUT_BYPASS" }
+# The non-power-of-two case checks the IRQ index padding, the bypass patterns check each IRQ line
+[[test.extensive.configs]]
+NUMBER_OF_IRQs      = 2
+IRQ_PRIORITY_BITS   = 1
+IRQ_INPUTREG_BYPASS = [true, false]
+[[test.extensive.configs]]
+NUMBER_OF_IRQs      = 3
+IRQ_PRIORITY_BITS   = 2
+IRQ_INPUTREG_BYPASS = [false, true, false]
+[[test.extensive.configs]]
+NUMBER_OF_IRQs      = 4
+IRQ_PRIORITY_BITS   = 4
+IRQ_INPUTREG_BYPASS = [true, false, true, false]
+
+[[test]]
+name    = "hazard3_regfile_1w2r"
+use     = ["pkg"]
+vhdl    = ["hazard3_regfile_1w2r.vhdl"]
+verilog = ["hazard3_regfile_1w2r.v"]
+sat_cycles = 5
+[test.basic]
+EXTENSION_E   = true
+RESET_REGFILE = false
+[test.extensive.matrix]
+EXTENSION_E   = [false, true]
+RESET_REGFILE = [false, true]
+
+# hazard3_irq_ctrl is needed for EXTENSION_XH3IRQ. Configurations at the extensive level:
+# 1. Mandatory CSRs only + RV32E + C + M (Zkt=0 via MUL_FAST=0, MULH_FAST=0)
+# 2. Trap CSRs only + non-MISA extensions + Xh3irq generate block active
+# 3. Mandatory + Trap (MSCRATCH) + counters + U_MODE (MCOUNTEREN, U-RO CSRs) + PMP (standard)
+# 4. Debug + Trap + U_MODE + C (C_SHIFT=1 in DPC and MEPC_MASK) + PMP with Xh3pmpm
+# 5. Maximal feature set (Zkt=1 via MUL_FAST=1, MULH_FAST=1, plus all concurrent paths)
+[[test]]
+name        = "hazard3_csr"
+use         = ["irq_ctrl"]
+vhdl        = ["hazard3_csr.vhdl"]
+verilog     = ["hazard3_csr.v"]
+generic_map = { NUMBER_OF_IRQs = "NUM_IRQS", IRQ_INPUTREG_BYPASS = "IRQ_INPUT_BYPASS" }
+[[test.extensive.configs]]
+CSR_M_MANDATORY = true
+CSR_M_TRAP      = false
+EXTENSION_C     = true
+EXTENSION_E     = true
+EXTENSION_M     = true
+MUL_FAST        = false
+MULH_FAST       = false
+[[test.extensive.configs]]
+CSR_M_MANDATORY  = false
+CSR_M_TRAP       = true
+EXTENSION_XH3IRQ = true
+EXTENSION_A      = true
+[[test.extensive.configs]]
+CSR_M_MANDATORY   = true
+CSR_M_TRAP        = true
+CSR_COUNTER       = true
+U_MODE            = true
+PMP_REGIONS       = 1
+EXTENSION_XH3PMPM = false
+[[test.extensive.configs]]
+CSR_M_MANDATORY   = true
+CSR_M_TRAP        = true
+U_MODE            = true
+DEBUG_SUPPORT     = true
+EXTENSION_C       = true
+PMP_REGIONS       = 2
+EXTENSION_XH3PMPM = true
+[[test.extensive.configs]]
+CSR_M_MANDATORY   = true
+CSR_M_TRAP        = true
+CSR_COUNTER       = true
+PMP_REGIONS       = 2
+EXTENSION_A       = true
+EXTENSION_C       = true
+EXTENSION_E       = false
+EXTENSION_M       = true
+MUL_FAST          = true
+MULH_FAST         = true
+EXTENSION_XH3PMPM = true
+EXTENSION_XH3IRQ  = true
+U_MODE            = true
+DEBUG_SUPPORT     = true
+
+# Configurations at the extensive level, covering the generate branches and parameter-dependent muxes:
+# 1. No C/E: no_decompress branch, buf_level/hwvld masking, 32-bit-only alignment
+# 2. Debug: instruction injection, trigger/check registers (break bits masked with C)
+# 3. Debug without C: trigger break masks {C,1} = "01"
+# 4. PMP + U-mode: PMP kill path, check registers without debug, jump_priv propagation
+# 5. Branch predictor with C: BTB, overhanging branches, hwvld/predbranch marking
+# 6. Branch predictor without C: BTB with word-aligned instructions only
+# 7. Maximal feature set (all concurrent paths)
+[[test]]
+name    = "hazard3_frontend"
+use     = ["decode"]
+vhdl    = ["hazard3_frontend.vhdl"]
+verilog = ["hazard3_frontend.v"]
+[[test.extensive.configs]]
+EXTENSION_C = false
+EXTENSION_E = false
+[[test.extensive.configs]]
+DEBUG_SUPPORT = true
+[[test.extensive.configs]]
+DEBUG_SUPPORT = true
+EXTENSION_C   = false
+[[test.extensive.configs]]
+PMP_REGIONS = 1
+U_MODE      = true
+[[test.extensive.configs]]
+BRANCH_PREDICTOR = true
+[[test.extensive.configs]]
+BRANCH_PREDICTOR = true
+EXTENSION_C      = false
+[[test.extensive.configs]]
+BRANCH_PREDICTOR = true
+DEBUG_SUPPORT    = true
+PMP_REGIONS      = 2
+U_MODE           = true
+EXTENSION_C      = true
+EXTENSION_E      = false
+EXTENSION_M      = true
+
+# The basic configuration (PMP_REGIONS=0) checks the stubbed-out generate branch.
+# Configurations at the extensive level, covering the generate branches and grain-dependent masks:
+# 1. Single NAPOT/NA4 region, G=0
+# 2. NAPOT with G=1: NA4 unsupported (mapped to OFF), pmpaddr read-back zeroing
+# 3. NAPOT + TOR: TOR lock propagation to region i-1, prev_ge chaining
+# 4. TOR only, G=2: regions span two pmpcfg registers, read-back ones-filling
+# 5. 8 regions, NAPOT + TOR, G=3, Xh3pmpm disabled (pmpcfgm0 reads zero)
+# 6. Maximum region count (all four pmpcfg registers, full pmpcfgm0 width)
+# 7. Hardwired, locked TOR region 1: hardwired values kept on writes, TOR lock also locks region 0
+# 8. Hardwired, unlocked NAPOT region 0 with G=2: grain ignored on hardwired region, pmpcfgm0 masked by
+#    PMP_HARDWIRED (note: an unlocked hardwired pmpaddr *is* writable in the reference, only pmpcfg writes
+#    restore the hardwired values)
+# sat_cycles = 5 is enough to write pmpaddr and pmpcfg after reset and then query; longer runs took
+# minutes per configuration without reaching more state.
+[[test]]
+name       = "hazard3_pmp"
+use        = ["pkg"]
+vhdl       = ["hazard3_pmp.vhdl"]
+verilog    = ["hazard3_pmp.v"]
+sat_cycles = 5
+[[test.extensive.configs]]
+PMP_REGIONS = 1
+[[test.extensive.configs]]
+PMP_REGIONS = 3
+PMP_GRAIN   = 1
+[[test.extensive.configs]]
+PMP_REGIONS   = 4
+PMP_MATCH_TOR = true
+[[test.extensive.configs]]
+PMP_REGIONS     = 5
+PMP_MATCH_NAPOT = false
+PMP_MATCH_TOR   = true
+PMP_GRAIN       = 2
+[[test.extensive.configs]]
+PMP_REGIONS       = 8
+PMP_MATCH_TOR     = true
+PMP_GRAIN         = 3
+EXTENSION_XH3PMPM = false
+[[test.extensive.configs]]
+PMP_REGIONS   = 16
+PMP_MATCH_TOR = true
+[[test.extensive.configs]]
+PMP_REGIONS        = 2
+PMP_MATCH_TOR      = true
+PMP_HARDWIRED      = { vhdl = "10", verilog = "2'b10" }
+PMP_HARDWIRED_CFG  = { vhdl = "1000110100000000", verilog = "16'h8D00" }
+PMP_HARDWIRED_ADDR = { vhdl = "0000100000000000000000000000000000000000000000000000000000000000", verilog = "64'h08000000_00000000" }
+[[test.extensive.configs]]
+PMP_REGIONS        = 2
+PMP_GRAIN          = 2
+PMP_HARDWIRED      = { vhdl = "01", verilog = "2'b01" }
+PMP_HARDWIRED_CFG  = { vhdl = "0000000000011111", verilog = "16'h001F" }
+PMP_HARDWIRED_ADDR = { vhdl = "0000000000000000000000000000000000000000000000000000001111111111", verilog = "64'h00000000_000003FF" }
