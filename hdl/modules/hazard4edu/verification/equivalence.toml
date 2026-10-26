@@ -278,6 +278,14 @@ RESET_REGFILE = false
 EXTENSION_E   = [false, true]
 RESET_REGFILE = [false, true]
 
+# Wake/sleep state machine, clocked by clk_always_on. It uses none of the hazard3_config.vh
+# parameters, so a single configuration covers it.
+[[test]]
+name    = "hazard3_power_ctrl"
+use     = ["pkg"]
+vhdl    = ["hazard3_power_ctrl.vhdl"]
+verilog = ["hazard3_power_ctrl.v"]
+
 # hazard3_irq_ctrl is needed for EXTENSION_XH3IRQ. Configurations at the extensive level:
 # 1. Mandatory CSRs only + RV32E + C + M (Zkt=0 via MUL_FAST=0, MULH_FAST=0)
 # 2. Trap CSRs only + non-MISA extensions + Xh3irq generate block active
