@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import container, flow, runner
 from .config import LEVELS, ConfigError, discover, load_module
-from .toolchain import ENVIRONMENTS, ToolchainError, resolve
+from .toolchain import ENVIRONMENTS, NoLocalToolchain, ToolchainError, resolve
 
 REPO_ROOT = Path(__file__).resolve().parents[2]    # <repo>/verification/equivlib/cli.py -> <repo>
 BUILD_ROOT = REPO_ROOT / "verification" / "build"
@@ -79,38 +79,17 @@ def main(argv: list[str] | None = None, module: str | None = None) -> int:
     # Docker: run this whole program again inside the container, with the same arguments. The
     # selection above already happened on the host, so typos are reported before a container starts.
     if args.env == "docker":
-        try:
-            version = container.normalize_version(args.oss_cad_suite)
-        except ValueError as error:
-            print(f"error: {error}", file=sys.stderr)
-            return EXIT_USAGE
-        try:
-            return container.run(sys.argv[1:] if argv is None else argv, module, REPO_ROOT,
-                                 version, args.rebuild_image)
-        except container.ContainerError as error:
-            print(f"error: {error}", file=sys.stderr)
-            return EXIT_TOOLCHAIN
+        return _run_in_container(args, argv, module)
 
     # Fetch the toolchain (GHDL/Yosys binaries and environment) for the requested environment or auto-detect it
     try:
         toolchain = resolve(args.env)
+    except NoLocalToolchain as error:
+        # 'auto' found nothing locally: offer Docker as a last resort
+        return _docker_fallback(str(error), args, argv, module)
     except ToolchainError as error:
         print(f"error: {error}", file=sys.stderr)
         return EXIT_TOOLCHAIN
-
-    # "auto" returned None → user accepted docker fallback; call container.run() directly
-    if toolchain is None:
-        try:
-            version = container.normalize_version(args.oss_cad_suite)
-        except ValueError as error:
-            print(f"error: {error}", file=sys.stderr)
-            return EXIT_USAGE
-        try:
-            return container.run(sys.argv[1:] if argv is None else argv, module, REPO_ROOT,
-                                 version, args.rebuild_image)
-        except container.ContainerError as error:
-            print(f"error: {error}", file=sys.stderr)
-            return EXIT_TOOLCHAIN
 
     # Run the selected tests in parallel, with the requested timeout and fail-fast behavior
     try:
@@ -122,6 +101,46 @@ def main(argv: list[str] | None = None, module: str | None = None) -> int:
 
     # Return 0 if all tests were proven, 1 otherwise (see EXIT_FAILED)
     return 0 if all(r.status == "proven" for r in results) else EXIT_FAILED
+
+
+def _docker_fallback(reason: str, args: argparse.Namespace, argv: list[str] | None, module: str | None) -> int:
+    """Ask whether to run in Docker after 'auto' found no local GHDL/Yosys ('reason'), and do so if accepted."""
+    try:
+        version = container.normalize_version(args.oss_cad_suite)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        accepted = container.prompt_docker(version)
+    except container.ContainerError as error:
+        print(f"error: {reason}, and the Docker fallback is unavailable: {error}. "
+              f"Install the OSS CAD Suite or choose another environment with --env.", file=sys.stderr)
+        return EXIT_TOOLCHAIN
+    except KeyboardInterrupt:
+        print("\nInterrupted", file=sys.stderr)
+        return 130
+    if not accepted:
+        print(f"error: {reason}, and the Docker fallback was declined. Install the OSS CAD Suite, "
+              f"or run in Docker without asking with --env docker.", file=sys.stderr)
+        return EXIT_TOOLCHAIN
+    return _run_in_container(args, argv, module, version)
+
+
+def _run_in_container(args: argparse.Namespace, argv: list[str] | None, module: str | None,
+                      version: str | None = None) -> int:
+    """Run this program with the same arguments inside the Docker container; return its exit code."""
+    if version is None:
+        try:
+            version = container.normalize_version(args.oss_cad_suite)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return EXIT_USAGE
+    try:
+        return container.run(sys.argv[1:] if argv is None else argv, module, REPO_ROOT,
+                             version, args.rebuild_image)
+    except container.ContainerError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_TOOLCHAIN
 
 
 def _parser(module: str | None) -> argparse.ArgumentParser:
@@ -160,9 +179,9 @@ def _parser(module: str | None) -> argparse.ArgumentParser:
     parser.add_argument("--fail-fast", action="store_true", help="stop starting new tests after the first failure")
     parser.add_argument("--timeout", type=float, metavar="SECONDS", help="time limit per test")
     parser.add_argument("--env", choices=ENVIRONMENTS, default="auto",
-                        help="where GHDL/Yosys come from (default: auto = OSS CAD Suite, then PATH; "
-                             "docker = run everything in a container)")
-    # Only used with --env docker
+                        help="where GHDL/Yosys come from (default: auto = OSS CAD Suite, then PATH, then "
+                             "asks to fall back to Docker; docker = run everything in a container)")
+    # Only used with --env docker (or when --env auto falls back to Docker)
     parser.add_argument("--oss-cad-suite", default=container.DEFAULT_VERSION, metavar="VERSION",
                         help="--env docker: OSS CAD Suite release, 'latest' or a date YYYY-MM-DD "
                              "(default: $OSS_CAD_SUITE_VERSION or latest)")

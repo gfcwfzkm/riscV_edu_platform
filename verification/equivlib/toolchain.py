@@ -6,14 +6,16 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import container
-
 ENVIRONMENTS = ("auto", "native", "path", "docker")
 DEFAULT_OSS_CAD_SUITE = "/opt/oss-cad-suite"
 
 
 class ToolchainError(Exception):
     """No usable GHDL/Yosys installation was found for the requested environment."""
+
+
+class NoLocalToolchain(ToolchainError):
+    """'auto' found no local GHDL/Yosys; the caller may fall back to Docker."""
 
 
 @dataclass
@@ -37,12 +39,11 @@ class Toolchain:
         return result
 
 
-def resolve(choice: str) -> Toolchain | None:
-    """Return the toolchain for 'native', 'path' or 'docker'; 'auto' tries native, then path,
-    then prompts to fall back to Docker.
+def resolve(choice: str) -> Toolchain:
+    """Return the toolchain for 'native' or 'path'; 'auto' tries native, then path.
 
-    Returns ``None`` when ``choice == "auto"`` and the user accepts the docker fallback.
-    ``cli.main()`` should then use :func:`container.run` instead of a local toolchain.
+    Raises :exc:`NoLocalToolchain` when 'auto' finds neither, so the caller can offer the Docker
+    fallback, and :exc:`ToolchainError` when an explicitly requested environment is missing.
     """
     if choice == "docker":
         return _docker()
@@ -57,17 +58,10 @@ def resolve(choice: str) -> Toolchain | None:
     toolchain = _path()
     if toolchain:
         return toolchain
-
-    # 'auto': try docker as a last resort
     if choice == "auto":
-        try:
-            if container.prompt_docker():
-                return None  # signal: cli.main should use container.run()
-        except container.ContainerError:
-            pass  # docker not available, fall through to _missing()
-
-    _missing("ghdl and/or yosys not found on PATH" if choice == "path" else
-             f"neither the OSS CAD Suite ({_oss_cad_suite_root()}) nor ghdl/yosys on PATH were found")
+        raise NoLocalToolchain(
+            f"neither the OSS CAD Suite ({_oss_cad_suite_root()}) nor ghdl/yosys on PATH were found")
+    _missing("ghdl and/or yosys not found on PATH")
 
 
 def _oss_cad_suite_root() -> Path:

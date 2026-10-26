@@ -631,10 +631,12 @@ begin
             mcounteren_ir_reg <= '0';
             mcounteren_tm_reg <= '0';
         elsif rising_edge(clk) then
-            if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN and CSR_COUNTER and U_MODE then
-                mcounteren_cy_reg <= wdata_update(0);
-                mcounteren_tm_reg <= wdata_update(1);
-                mcounteren_ir_reg <= wdata_update(2);
+            -- Written (with zeros) even without counters or U-mode: a register that is only
+            -- assigned in the reset branch would be inferred as a latch by GHDL
+            if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN then
+                mcounteren_cy_reg <= wdata_update(0) and to_std_logic(CSR_COUNTER and U_MODE);
+                mcounteren_tm_reg <= wdata_update(1) and to_std_logic(CSR_COUNTER and U_MODE);
+                mcounteren_ir_reg <= wdata_update(2) and to_std_logic(CSR_COUNTER and U_MODE);
             end if;
         end if;
     end process;
@@ -855,8 +857,8 @@ begin
                     decode_match <= match_mrw;
                     rdata <= std_logic_vector(minstreth_reg);
                 end if;
-            when CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN => 
-                if CSR_COUNTER then
+            when CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN =>
+                if CSR_COUNTER and U_MODE then
                     decode_match <= match_mrw;
                     rdata <= (
                         2 => mcounteren_ir_reg,

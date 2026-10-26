@@ -59,7 +59,7 @@ OSS_CAD_SUITE_VERSION=2026-10-23 hdl/modules/debug/verification/run.py --env doc
 ```
 
 The first use of a version builds the image `riscv-edu-equiv:oss-cad-suite-<version>` from
-`verification/docker/` (downloads about 750 MB, 2.4 GB on disk). The whole runner then runs
+`verification/docker/` (downloads about 750 MB, 2.8 GB on disk). The whole runner then runs
 inside the container with the same arguments, as your user, with the repository mounted at the
 same path, so results land in `verification/build/` as usual. A `latest` image is not updated by
 itself: the run prints when it was built, and `--rebuild-image` fetches the newest release.
@@ -68,7 +68,10 @@ Details: [docker/README.md](docker/README.md).
 ### Auto fallback
 
 When `--env auto` (the default) cannot find GHDL/Yosys locally, it prompts before falling back
-to Docker. `--list` and `--check` never trigger the prompt because they need no tools.
+to Docker. `--list` and `--check` never trigger the prompt because they need no tools. There is
+no prompt, and the run fails with exit code `3`, if Docker is missing, its daemon can't be
+reached, or there is no interactive terminal to answer on (e.g. in CI); pass `--env docker` there
+to use Docker without asking.
 
 ## Debugging a failing check
 
@@ -134,6 +137,7 @@ Per test, the following keys are available:
 | `top`                        | Top-level entity/module name, defaults to `name`                                                      |
 | `use`, `vhdl`, `verilog` | Source files, dependencies first. The VHDL list must contain the top-level entity                       |
 | `blackbox`                   | Verilog stubs for vendor primitives (adds `-ignore-unknown-cells` to the SAT solver)                  |
+| `blackbox_instances`         | Instances of the top level to blackbox, so only their wiring is proven, see [Blackboxed instances](#blackboxed-instances) |
 | `reset`, `sat_cycles`      | Override the `[defaults]`                                                                             |
 | `generic_map`                | `{ VHDL_NAME = "VERILOG_NAME" }` for generics that are named differently in the Verilog reference     |
 | `basic`                      | Generics of the basic level. Without it, the defaults of the entity/module are used, so they must agree |
@@ -156,6 +160,31 @@ Generic values:
 
 GHDL cannot set array generics on the command line, so for those the runner analyses a copy of the
 top-level VHDL file with the generic's default value replaced (in the test's `ghdl-work/` folder).
+
+### Blackboxed instances
+
+Large designs built from units that already have their own tests (e.g. `hazard3_core`) can be
+proven much faster by blackboxing those units. In both designs, `expose -evert` replaces each listed
+instance of the top level by cut points: its outputs become inputs shared by gold and silver (free
+values in every cycle) and its inputs become compared outputs, named `<instance>:<port>`. The proof
+then covers only the logic around the instances and how they are wired, for every possible
+behaviour of the instances. Their contents are left to their own tests.
+
+```toml
+blackbox_instances = [
+    "frontend",                                                           # same name in both
+    { vhdl = "branchcmp_gen_branchcmp_u", verilog = "fast_branchcmp_branchcmp_u" },  # names differ
+]
+```
+
+- Names are those of GHDL's netlist: VHDL labels in lower case, with generate labels joined by `_`
+  (e.g. `has_muldiv_muldiv`). On the Verilog side Yosys' `<scope>.<instance>` names of generate
+  blocks are converted to the same form, so a mapping is only needed if the labels differ.
+- Instances that a configuration does not generate are skipped (the log notes them).
+- Port names and widths of an instance must agree between VHDL and Verilog. A blackboxed instance
+  that exists in only one of the designs makes the check fail.
+- Because the instances may behave arbitrarily, a difference in logic that only real instances would
+  hide (e.g. a `'X'` default that the real decoder never selects) shows up as a counterexample.
 
 # AI Disclosure
 

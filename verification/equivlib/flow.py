@@ -14,6 +14,9 @@ from .config import EquivTest
 from .toolchain import Toolchain
 
 
+CUT_SEPARATOR = ":"     # Port names of blackboxed instances: <instance>:<port>
+
+
 class FlowError(Exception):
     """The flow for a test could not be set up (e.g. the top-level entity was not found)."""
 
@@ -83,7 +86,6 @@ def execute(plan: Plan, toolchain: Toolchain, timeout: float | None) -> str:
     (plan.workdir / "ghdl-work").mkdir(parents=True)
     if plan.vhdl_override:
         plan.vhdl_override[0].write_text(plan.vhdl_override[1])
-    plan.script.write_text(plan.script_text)
 
     # The timeout covers GHDL and Yosys together: each gets the time that is left
     deadline = time.monotonic() + timeout if timeout else None
@@ -101,6 +103,15 @@ def execute(plan: Plan, toolchain: Toolchain, timeout: float | None) -> str:
             # A negative return code means the process was terminated by that signal number
             if code != 0:
                 return _killed(log, "ghdl", code) if code < 0 else "ghdl-synth-failed"
+            # Which blackboxed instances exist depends on the generics (generate statements), so the
+            # script is only final now that the netlist shows which ones GHDL instantiated
+            if plan.test.blackbox_instances:
+                present = _netlist_instances(plan.silver, plan.test.top)
+                for vhdl_name, _ in plan.test.blackbox_instances:
+                    if vhdl_name not in present:
+                        log.write(f"note: blackboxed instance '{vhdl_name}' does not exist in this configuration\n")
+                plan.script_text = _yosys_script(plan.test, plan.silver, plan.script, plan.vcd, present)
+            plan.script.write_text(plan.script_text)
             log.write(f"\n$ {shlex.join(yosys)}\n")
             log.flush()
             code = _run(yosys, toolchain, plan.workdir, log, log, deadline)
@@ -177,7 +188,43 @@ def _run(argv, toolchain, cwd, stdout, stderr, deadline) -> int:
                           stdin=subprocess.DEVNULL, timeout=timeout).returncode
 
 
-def _yosys_script(test: EquivTest, silver: Path, script: Path, vcd: Path | None) -> str:
+def _netlist_instances(silver: Path, top: str) -> set[str]:
+    """Return the names of the instances in the top-level module of GHDL's Verilog netlist."""
+    # GHDL writes one instance per line as '  <module> <instance> (' and the top level last
+    text = silver.read_text()
+    start = text.rfind(f"\nmodule {top}")
+    return set(re.findall(r"^  \S+ (\S+) \($", text[start:], re.MULTILINE)) if start >= 0 else set()
+
+
+def _blackbox_commands(test: EquivTest, design: str, present: set[str] | None) -> list[str]:
+    """Return the Yosys commands that replace the blackboxed instances of 'design' (gold or silver)
+    by cut points: 'expose -evert' removes each instance and turns its ports into top-level ports
+    named <instance>:<port>. The outputs of the instance become inputs, which the gold and silver
+    copies share, and its inputs become outputs, which are compared. Only the wiring around the
+    instance is proven, its contents are left to the instance's own tests.
+
+    'present' holds the instances of GHDL's netlist; None (the --check listing) assumes all exist.
+    """
+    if not test.blackbox_instances:
+        return []
+    commands = []
+    if design == "gold":
+        # Yosys names cells in generate blocks <scope>.<instance>, GHDL <scope>_<instance>
+        commands.append("rename -unescape gold/c:*")
+        # 'rename' fails on a missing cell, so only instances that exist in this configuration
+        renames = [(vhdl, verilog) for vhdl, verilog in test.blackbox_instances
+                   if vhdl != verilog and (present is None or vhdl in present)]
+        if renames:
+            commands += ["cd gold", *(f"rename {verilog} {vhdl}" for vhdl, verilog in renames), "cd .."]
+    # 'expose' ignores selections that match nothing, so instances absent from this configuration are fine.
+    # Not the default separator '.': GHDL already names some wires <instance>.<port>.
+    commands.append(f"expose -evert -sep {CUT_SEPARATOR} "
+                    + " ".join(f"{design}/c:{vhdl}" for vhdl, _ in test.blackbox_instances))
+    return commands
+
+
+def _yosys_script(test: EquivTest, silver: Path, script: Path, vcd: Path | None,
+                  present: set[str] | None = None) -> str:
     """Return the Yosys script that proves the equivalence of the VHDL and Verilog designs."""
     include = "".join(f"-I{d} " for d in test.include)
     # -show-ports (= -show-inputs -show-outputs) lists the ports of a counterexample in the log.
@@ -200,11 +247,13 @@ def _yosys_script(test: EquivTest, silver: Path, script: Path, vcd: Path | None)
         f"rename {test.top} gold",
         *(f"chparam -set {test.generic_map.get(k, k)} {verilog_value(v)} gold" for k, v in test.generics.items()),
         "hierarchy -top gold",
+        *_blackbox_commands(test, "gold", present),
         "proc; flatten; memory; async2sync",
         "",
         "# Implementation (silver): the VHDL design, synthesized to Verilog by GHDL",
         f"read_verilog -formal {silver}",
         f"rename {test.top} silver",
+        *_blackbox_commands(test, "silver", present),
         "proc; flatten silver; memory; async2sync",
         "",
         f"# Build the miter and prove gold and silver equivalent over {test.sat_cycles} cycles",

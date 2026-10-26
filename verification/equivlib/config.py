@@ -16,8 +16,8 @@ TOP_KEYS = {"module", "defaults", "filesets", "test"}
 MODULE_KEYS = {"vhdl_dir", "verilog_dir", "include"}
 DEFAULT_KEYS = {"reset", "sat_cycles"}
 FILESET_KEYS = {"use", "vhdl", "verilog"}
-TEST_KEYS = {"name", "top", "use", "vhdl", "verilog", "blackbox", "reset", "sat_cycles",
-             "generic_map", "basic", "extensive"}
+TEST_KEYS = {"name", "top", "use", "vhdl", "verilog", "blackbox", "blackbox_instances", "reset",
+             "sat_cycles", "generic_map", "basic", "extensive"}
 EXTENSIVE_KEYS = {"matrix", "configs", "exclude"}
 
 
@@ -36,6 +36,9 @@ class EquivTest:
     verilog: list[Path]
     include: list[Path]             # Verilog include directories
     blackbox: list[Path]            # Verilog blackbox stubs for vendor primitives
+    # Instances of the top level replaced by cut points, as (VHDL name, Verilog name) pairs.
+    # VHDL names as in GHDL's netlist, Verilog names with generate scopes joined by '_'.
+    blackbox_instances: list[tuple[str, str]]
     reset: dict[str, list[int]]     # Signal -> value at SAT step 1, 2, ...
     sat_cycles: int
     generics: dict[str, object]     # VHDL generic name -> value
@@ -133,7 +136,8 @@ class _Module:
                 self._fail(where, "needs at least one VHDL and one Verilog file (directly or via 'use')")
             blackbox = [self._file(self.root / f, f"{where} blackbox")
                         for f in self._strings(spec.get("blackbox", []), f"{where} blackbox")]
-            reset = self._reset(spec["reset"], where) if "reset" in spec else self.default_reset
+            instances = self._instances(spec.get("blackbox_instances", []), f"{where} blackbox_instances")
+            reset =self._reset(spec["reset"], where) if "reset" in spec else self.default_reset
             cycles = self._cycles(spec.get("sat_cycles", self.default_cycles), where)
             generic_map = self._table(spec, "generic_map", where)
             for vhdl_name, verilog_name in generic_map.items():
@@ -147,7 +151,8 @@ class _Module:
                 seen.add(tid)
                 tests.append(EquivTest(
                     module=self.name, id=tid, name=name, top=self._string(spec.get("top", name), f"{where} top"),
-                    vhdl=vhdl, verilog=verilog, include=self.include, blackbox=blackbox, reset=reset,
+                    vhdl=vhdl, verilog=verilog, include=self.include, blackbox=blackbox,
+                    blackbox_instances=instances, reset=reset,
                     sat_cycles=cycles, generics=generics, generic_map=generic_map,
                 ))
         return tests
@@ -242,6 +247,25 @@ class _Module:
                 self._fail(f"{where}.{key}", "expected a boolean, an integer, a list of booleans or "
                                              "{ vhdl = \"...\", verilog = \"...\" }")
         return dict(table)
+
+    def _instances(self, value: object, where: str) -> list[tuple[str, str]]:
+        """Return the blackboxed instances as (VHDL name, Verilog name) pairs, validating the types.
+        Each entry is a name used on both sides, or { vhdl = "...", verilog = "..." } if they differ."""
+        if not isinstance(value, list):
+            self._fail(where, "expected a list of instance names")
+        instances: list[tuple[str, str]] = []
+        for entry in value:
+            if isinstance(entry, str) and entry:
+                instances.append((entry, entry))
+            elif (isinstance(entry, dict) and set(entry) == {"vhdl", "verilog"}
+                  and all(isinstance(v, str) and v for v in entry.values())):
+                instances.append((entry["vhdl"], entry["verilog"]))
+            else:
+                self._fail(where, "expected instance names or { vhdl = \"...\", verilog = \"...\" } tables")
+        # Duplicates would evert the same instance twice
+        if len({vhdl for vhdl, _ in instances}) != len(instances):
+            self._fail(where, "an instance is listed more than once")
+        return instances
 
     def _reset(self, value: object, where: str) -> dict[str, list[int]]:
         """Return a table of signal name -> value at SAT step 1, 2, ..., validating the types."""

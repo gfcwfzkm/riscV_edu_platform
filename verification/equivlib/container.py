@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 IMAGE_REPOSITORY = "riscv-edu-equiv"
@@ -36,22 +37,47 @@ def image_name(version: str) -> str:
     return f"{IMAGE_REPOSITORY}:oss-cad-suite-{version}"
 
 
-def prompt_docker() -> bool:
-    """Warn about downloading the OSS CAD Suite image and ask the user to proceed.
+def prompt_docker(version: str) -> bool:
+    """Ask the user whether to run the checks inside Docker, after 'auto' found no local GHDL/Yosys.
 
-    Returns ``True`` if the user accepts, ``False`` if they decline.
-    Raises :exc:`ContainerError` if docker is not available on PATH.
+    Returns ``True`` if the user accepts, ``False`` if they decline (or end the input with Ctrl-D).
+    Raises :exc:`ContainerError` if Docker can't be used, or if there is no terminal to ask on
+    (e.g. in CI), where waiting for an answer would fail.
     """
+    docker = require_docker()
+    if not sys.stdin.isatty():
+        raise ContainerError("no interactive terminal to confirm the Docker fallback")
+    image = image_name(version)
+    if _exists(docker, image):
+        print(f"\nNo local GHDL/Yosys found. The equivalence checks can run inside the cached\n"
+              f"Docker image {image} ({_created(docker, image)}).\n")
+    else:
+        print(f"\nNo local GHDL/Yosys found. The equivalence checks can run inside a Docker container.\n"
+              f"Building its image {image} downloads the OSS CAD Suite (~750 MB download,\n"
+              f"~2.8 GB disk); the image is built once and reused for subsequent runs.\n")
+    try:
+        answer = input("Proceed with docker? [y/N] ")
+    except EOFError:
+        print()
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+def require_docker() -> str:
+    """Return the path of the docker client, after checking that its daemon can be reached."""
     docker = shutil.which("docker")
     if not docker:
         raise ContainerError("docker not found on PATH")
-    print(
-        "\nNo local GHDL/Yosys found. The equivalence runner can proceed inside a Docker\n"
-        "container, which will download and cache the OSS CAD Suite (~750 MB download,\n"
-        "~3.5 GB disk). The image is built once and reused for subsequent runs.\n"
-    )
-    answer = input("Proceed with docker? [y/N] ")
-    return answer.strip().lower() in ("y", "yes")
+    try:
+        result = subprocess.run([docker, "info", "--format", "{{.ServerVersion}}"],
+                                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ContainerError(f"docker could not be started: {error}") from None
+    if result.returncode != 0:
+        # E.g. the daemon isn't running, or the user may not access its socket (docker group)
+        lines = result.stderr.strip().splitlines()
+        raise ContainerError(f"the Docker daemon can't be reached ({lines[-1] if lines else 'docker info failed'})")
+    return docker
 
 
 def run(argv: list[str], module: str | None, repo_root: Path, version: str, rebuild: bool) -> int:
@@ -59,9 +85,7 @@ def run(argv: list[str], module: str | None, repo_root: Path, version: str, rebu
 
     'version' must already be normalized (normalize_version).
     """
-    docker = shutil.which("docker")
-    if not docker:
-        raise ContainerError("docker not found on PATH")
+    docker = require_docker()
     image = _ensure_image(docker, version, rebuild)
 
     # The same entry point as on the host, so a module launcher stays limited to its module.
