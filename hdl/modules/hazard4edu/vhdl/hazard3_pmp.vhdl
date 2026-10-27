@@ -31,7 +31,7 @@ entity hazard3_pmp is
     );
     port(
         clk                       : in  std_logic;
-        rst_n                     : in  std_logic;
+        rst                       : in  std_logic;
         -- Config interface passed through CSR block
         cfg_addr                  : in  unsigned(CSR_ADDRESS_WIDTH_C - 1 downto 0);
         cfg_wen                   : in  std_logic;
@@ -138,69 +138,71 @@ begin
         ---------------------------------------------------------------------------
         -- Config registers and read/write interface
 
-        CFG_UPDATE : process(clk, rst_n)
+        CFG_UPDATE : process(clk)
             variable v_byte : natural;
         begin
-            if ?? (not rst_n) then
-                for i in 0 to PMP_REGIONS - 1 loop
-                    if PMP_HARDWIRED(i) = '1' then
-                        pmpcfg_l_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 7);
-                        pmpcfg_a_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 4 downto 8 * i + 3);
-                        pmpcfg_x_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 2);
-                        pmpcfg_w_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 1);
-                        pmpcfg_r_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 0);
-                        pmpaddr_reg(i)  <= PMP_HARDWIRED_ADDR(32 * i + W_PMPADDR - 1 downto 32 * i);
-                    else
-                        pmpcfg_l_reg(i) <= '0';
-                        pmpcfg_a_reg(i) <= PMP_A_OFF;
-                        pmpcfg_x_reg(i) <= '0';
-                        pmpcfg_w_reg(i) <= '0';
-                        pmpcfg_r_reg(i) <= '0';
-                        -- G - 1 LSBs are ones when PMP_GRAIN > 1 (low_ones yields zero otherwise)
-                        pmpaddr_reg(i)  <= low_ones(PMP_GRAIN - 1);
-                    end if;
-                end loop;
-                pmpcfg_m_reg <= (others => '0');
-            elsif rising_edge(clk) then
-                if ?? cfg_wen then
+            if rising_edge(clk) then
+                if ?? rst then
                     for i in 0 to PMP_REGIONS - 1 loop
-                        -- Bit offset of this region's byte within its pmpcfg register
-                        v_byte := (i mod 4) * 8;
-                        if cfg_addr = to_unsigned(PMPCFG0 + i / 4, cfg_addr'length) and region_locked(i) = '0' then
-                            if PMP_HARDWIRED(i) = '1' then
-                                -- Keep tied to hardwired value (but still make the "register" sensitive to clk)
-                                pmpcfg_l_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 7);
-                                pmpcfg_a_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 4 downto 8 * i + 3);
-                                pmpcfg_x_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 2);
-                                pmpcfg_w_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 1);
-                                pmpcfg_r_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 0);
-                                pmpaddr_reg(i)  <= PMP_HARDWIRED_ADDR(32 * i + W_PMPADDR - 1 downto 32 * i);
-                            else
-                                pmpcfg_l_reg(i) <= cfg_wdata(v_byte + 7);
-                                pmpcfg_x_reg(i) <= cfg_wdata(v_byte + 2);
-                                pmpcfg_w_reg(i) <= cfg_wdata(v_byte + 1);
-                                pmpcfg_r_reg(i) <= cfg_wdata(v_byte + 0);
-                                -- Unsupported A values are mapped to OFF (it's a WARL field).
-                                if PMP_A_SUPPORTED(to_integer(unsigned(cfg_wdata(v_byte + 4 downto v_byte + 3)))) then
-                                    pmpcfg_a_reg(i) <= cfg_wdata(v_byte + 4 downto v_byte + 3);
-                                else
-                                    pmpcfg_a_reg(i) <= PMP_A_OFF;
-                                end if;
-                            end if;
-                        end if;
-                        if cfg_addr = to_unsigned(PMPADDR0 + i, cfg_addr'length) and region_locked(i) = '0' then
-                            -- This implements one bit too many when G > 0 and only
-                            -- PMP_MATCH_TOR is enabled, however that bit is ignored for
-                            -- both rdata and address matching, so should be trimmed.
-                            -- (low_ones yields zero unless PMP_GRAIN > 1)
-                            pmpaddr_reg(i) <= cfg_wdata(W_PMPADDR - 1 downto 0) or low_ones(PMP_GRAIN - 1);
+                        if PMP_HARDWIRED(i) = '1' then
+                            pmpcfg_l_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 7);
+                            pmpcfg_a_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 4 downto 8 * i + 3);
+                            pmpcfg_x_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 2);
+                            pmpcfg_w_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 1);
+                            pmpcfg_r_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 0);
+                            pmpaddr_reg(i)  <= PMP_HARDWIRED_ADDR(32 * i + W_PMPADDR - 1 downto 32 * i);
+                        else
+                            pmpcfg_l_reg(i) <= '0';
+                            pmpcfg_a_reg(i) <= PMP_A_OFF;
+                            pmpcfg_x_reg(i) <= '0';
+                            pmpcfg_w_reg(i) <= '0';
+                            pmpcfg_r_reg(i) <= '0';
+                            -- G - 1 LSBs are ones when PMP_GRAIN > 1 (low_ones yields zero otherwise)
+                            pmpaddr_reg(i)  <= low_ones(PMP_GRAIN - 1);
                         end if;
                     end loop;
-                    if cfg_addr = to_unsigned(PMPCFGM0, cfg_addr'length) then
-                        if EXTENSION_XH3PMPM then
-                            pmpcfg_m_reg <= cfg_wdata(PMP_REGIONS - 1 downto 0) and not PMP_HARDWIRED;
-                        else
-                            pmpcfg_m_reg <= (others => '0');
+                    pmpcfg_m_reg <= (others => '0');
+                else
+                    if ?? cfg_wen then
+                        for i in 0 to PMP_REGIONS - 1 loop
+                            -- Bit offset of this region's byte within its pmpcfg register
+                            v_byte := (i mod 4) * 8;
+                            if cfg_addr = to_unsigned(PMPCFG0 + i / 4, cfg_addr'length) and region_locked(i) = '0' then
+                                if PMP_HARDWIRED(i) = '1' then
+                                    -- Keep tied to hardwired value (but still make the "register" sensitive to clk)
+                                    pmpcfg_l_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 7);
+                                    pmpcfg_a_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 4 downto 8 * i + 3);
+                                    pmpcfg_x_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 2);
+                                    pmpcfg_w_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 1);
+                                    pmpcfg_r_reg(i) <= PMP_HARDWIRED_CFG(8 * i + 0);
+                                    pmpaddr_reg(i)  <= PMP_HARDWIRED_ADDR(32 * i + W_PMPADDR - 1 downto 32 * i);
+                                else
+                                    pmpcfg_l_reg(i) <= cfg_wdata(v_byte + 7);
+                                    pmpcfg_x_reg(i) <= cfg_wdata(v_byte + 2);
+                                    pmpcfg_w_reg(i) <= cfg_wdata(v_byte + 1);
+                                    pmpcfg_r_reg(i) <= cfg_wdata(v_byte + 0);
+                                    -- Unsupported A values are mapped to OFF (it's a WARL field).
+                                    if PMP_A_SUPPORTED(to_integer(unsigned(cfg_wdata(v_byte + 4 downto v_byte + 3)))) then
+                                        pmpcfg_a_reg(i) <= cfg_wdata(v_byte + 4 downto v_byte + 3);
+                                    else
+                                        pmpcfg_a_reg(i) <= PMP_A_OFF;
+                                    end if;
+                                end if;
+                            end if;
+                            if cfg_addr = to_unsigned(PMPADDR0 + i, cfg_addr'length) and region_locked(i) = '0' then
+                                -- This implements one bit too many when G > 0 and only
+                                -- PMP_MATCH_TOR is enabled, however that bit is ignored for
+                                -- both rdata and address matching, so should be trimmed.
+                                -- (low_ones yields zero unless PMP_GRAIN > 1)
+                                pmpaddr_reg(i) <= cfg_wdata(W_PMPADDR - 1 downto 0) or low_ones(PMP_GRAIN - 1);
+                            end if;
+                        end loop;
+                        if cfg_addr = to_unsigned(PMPCFGM0, cfg_addr'length) then
+                            if EXTENSION_XH3PMPM then
+                                pmpcfg_m_reg <= cfg_wdata(PMP_REGIONS - 1 downto 0) and not PMP_HARDWIRED;
+                            else
+                                pmpcfg_m_reg <= (others => '0');
+                            end if;
                         end if;
                     end if;
                 end if;

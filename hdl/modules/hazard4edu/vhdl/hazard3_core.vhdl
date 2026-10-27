@@ -6,16 +6,9 @@ use work.hazard3_constants.all;
 
 entity hazard3_core is
     generic(
-        -- Address of first instruction executed
-        RESET_VECTOR        : unsigned(31 downto 0)                                    := x"0000_0000";
-        -- Initial value of trap vector base. Bits clear in MTVEC_WRITE_MASK_C will never change
-        -- from this initial value. Bit 0 selects the vectoring mode (0: unvectored, 1: vectored).
-        MTVEC_INIT          : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0)           := x"0000_0000";
-
         -- Standard RISC-V ISA support
         EXTENSION_A         : boolean                                                  := TRUE;  -- Atomic read/modify/write instructions
         EXTENSION_C         : boolean                                                  := TRUE;  -- Compressed (variable-width) instructions
-        EXTENSION_E         : boolean                                                  := TRUE;  -- RV32E base: 15 instead of 31 integer registers
         EXTENSION_M         : boolean                                                  := TRUE;  -- Hardware multiply/divide/modulo instructions
 
         -- Custom RISC-V extensions
@@ -28,7 +21,7 @@ entity hazard3_core is
         -- Standard CSR support
         CSR_M_MANDATORY     : boolean                                                  := TRUE;  -- Bare minimum CSR support e.g. misa
         CSR_M_TRAP          : boolean                                                  := TRUE;  -- M-mode trap-handling CSRs and trap support
-        CSR_COUNTER         : boolean                                                  := FALSE; -- Performance counters and Zicntr CSRs
+        CSR_COUNTER         : boolean                                                  := TRUE;  -- Performance counters and Zicntr CSRs
         -- Support the U (user) execution mode. Requires: CSR_M_TRAP
         U_MODE              : boolean                                                  := FALSE;
 
@@ -49,13 +42,13 @@ entity hazard3_core is
 
         -- Support for run/halt and instruction injection from an external Debug Module, support
         -- for Debug Mode, and Debug Mode CSRs. Requires: CSR_M_MANDATORY, CSR_M_TRAP
-        DEBUG_SUPPORT       : boolean                                                  := FALSE;
+        DEBUG_SUPPORT       : boolean                                                  := TRUE;
         -- Number of triggers which support type=2 execute=1. Requires: DEBUG_SUPPORT
-        BREAKPOINT_TRIGGERS : natural                                                  := 0;
+        BREAKPOINT_TRIGGERS : natural                                                  := 8;
 
         -- Number of external IRQs. Note that if EXTENSION_XH3IRQ (IRQ Controller) is disabled, then
         -- multiple external interrupts are OR'd into mip.meip
-        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C                   := 1;
+        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C                   := 8;
         -- Number of priority bits implemented for each interrupt in meipra
         IRQ_PRIORITY_BITS   : integer range 0 to 4                                     := 0;
         -- Disable the input registers on the external interrupts, IRQ-by-IRQ
@@ -65,25 +58,29 @@ entity hazard3_core is
         -- Remove all forwarding paths except X->X, to save area
         REDUCED_BYPASS      : boolean                                                  := FALSE;
         -- Bits per clock for multiply/divide circuit, if present. Must be a power of 2.
-        MULDIV_UNROLL       : positive                                                 := 1;
+        MULDIV_UNROLL       : positive                                                 := 2;
         -- Single-cycle multiply circuit for MUL instructions, retiring to stage 3
-        MUL_FAST            : boolean                                                  := FALSE;
+        MUL_FAST            : boolean                                                  := TRUE;
         -- Retire fast multiply results to stage 2 instead of stage 3. Requires: MUL_FAST
-        MUL_FASTER          : boolean                                                  := FALSE;
+        MUL_FASTER          : boolean                                                  := TRUE;
         -- Extend the fast multiply circuit to also cover MULH*. Requires: MUL_FAST
-        MULH_FAST           : boolean                                                  := FALSE;
+        MULH_FAST           : boolean                                                  := TRUE;
         -- Separate comparator for branch comparisons, rather than using the ALU
         FAST_BRANCHCMP      : boolean                                                  := TRUE;
-        -- Support reset of the general purpose registers (disable for block-RAM inference)
-        RESET_REGFILE       : boolean                                                  := FALSE;
         -- Single-entry BTB, allocated on a taken backward branch
-        BRANCH_PREDICTOR    : boolean                                                  := FALSE
+        BRANCH_PREDICTOR    : boolean                                                  := TRUE
     );
     port(
         -- Global signals
         clk           : in std_logic;
         clk_always_on : in std_logic;
-        rst_n         : in std_logic;
+        rst           : in std_logic;
+
+        -- Address of first instruction executed
+        reset_vector  : in std_logic_vector(31 downto 0);
+        -- Initial value of trap vector base. Bits clear in MTVEC_WRITE_MASK_C will never change
+        -- from this initial value. Bit 0 selects the vectoring mode (0: unvectored, 1: vectored).
+        mtvec_init    : in std_logic_vector(31 downto 0);
 
         -- Power control signals
         pwrup_req   : out std_logic;
@@ -160,7 +157,6 @@ architecture rtl of hazard3_core is
     constant HSIZE_HWORD : std_logic_vector(2 downto 0) := "001";
     constant HSIZE_BYTE  : std_logic_vector(2 downto 0) := "000";
 
-    constant REGADDR_MASK : std_logic_vector(REGISTER_ADDRESS_WIDTH_C - 1 downto 0) := (not to_std_logic(EXTENSION_E)) & "1111";
 
     signal x_stall    : std_logic;
     signal m_stall    : std_logic;
@@ -454,10 +450,8 @@ begin
 
     frontend : entity work.hazard3_frontend
         generic map(
-            RESET_VECTOR     => RESET_VECTOR,
             PMP_REGIONS      => PMP_REGIONS,
             EXTENSION_C      => EXTENSION_C,
-            EXTENSION_E      => EXTENSION_E,
             EXTENSION_M      => EXTENSION_M,
             U_MODE           => U_MODE,
             DEBUG_SUPPORT    => DEBUG_SUPPORT,
@@ -465,7 +459,9 @@ begin
         )
         port map(
             clk                  => clk,
-            rst_n                => rst_n,
+            rst                  => rst,
+
+            reset_vector         => reset_vector,
 
             mem_size             => f_mem_size,
             mem_addr             => f_mem_addr,
@@ -537,10 +533,8 @@ begin
 
     decode_u : entity work.hazard3_decode
         generic map(
-            RESET_VECTOR     => RESET_VECTOR,
             EXTENSION_A      => EXTENSION_A,
             EXTENSION_C      => EXTENSION_C,
-            EXTENSION_E      => EXTENSION_E,
             EXTENSION_M      => EXTENSION_M,
             CSR_M_MANDATORY  => CSR_M_MANDATORY,
             CSR_M_TRAP       => CSR_M_TRAP,
@@ -551,7 +545,9 @@ begin
         )
         port map(
             clk                     => clk,
-            rst_n                   => rst_n,
+            rst                     => rst,
+
+            reset_vector            => reset_vector,
 
             fd_cir                  => fd_cir,
             fd_cir_err              => fd_cir_err,
@@ -705,36 +701,36 @@ begin
     -- doesn't *have* a register operand on that port.) These aren't usable for
     -- hazard checking but are fine for bypass, and make the bypass mux
     -- independent of stage 2 decode.
-    PREDECODED_REGS : process(clk, rst_n) is
+    PREDECODED_REGS : process(clk) is
     begin
-        if ?? (not rst_n) then
-            d_rs1_predecoded_reg <= (others => '0');
-            d_rs2_predecoded_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if ?? (d_starved or not x_stall) then
-                d_rs1_predecoded_reg <= f_rs1_fine and REGADDR_MASK;
-                d_rs2_predecoded_reg <= f_rs2_fine and REGADDR_MASK;
+        if rising_edge(clk) then
+            if ?? rst then
+                d_rs1_predecoded_reg <= (others => '0');
+                d_rs2_predecoded_reg <= (others => '0');
+            elsif ?? (d_starved or not x_stall) then
+                d_rs1_predecoded_reg <= f_rs1_fine;
+                d_rs2_predecoded_reg <= f_rs2_fine;
             end if;
         end if;
     end process PREDECODED_REGS;
 
-    d_rs1_predecoded_nxt <= REGADDR_MASK and f_rs1_fine when ?? (d_starved or not x_stall) else
-                            REGADDR_MASK and d_rs1_predecoded_reg;
-    d_rs2_predecoded_nxt <= REGADDR_MASK and f_rs2_fine when ?? (d_starved or not x_stall) else
-                            REGADDR_MASK and d_rs2_predecoded_reg;
+    d_rs1_predecoded_nxt <= f_rs1_fine when ?? (d_starved or not x_stall) else d_rs1_predecoded_reg;
+    d_rs2_predecoded_nxt <= f_rs2_fine when ?? (d_starved or not x_stall) else d_rs2_predecoded_reg;
 
-    BYPASS_SELECT : process(clk, rst_n) is
+    BYPASS_SELECT : process(clk) is
     begin
-        if ?? (not rst_n) then
-            x_rs1_select_regs_xm_mw_reg <= "000";
-            x_rs2_select_regs_xm_mw_reg <= "000";
-        elsif rising_edge(clk) then
-            x_rs1_select_regs_xm_mw_reg <= "000" when d_rs1_predecoded_nxt = "00000"    else
-                                           "010" when xm_rd_nxt = d_rs1_predecoded_nxt else
-                                           "001" when mw_rd_nxt = d_rs1_predecoded_nxt else "100";
-            x_rs2_select_regs_xm_mw_reg <= "000" when d_rs2_predecoded_nxt = "00000"    else
-                                           "010" when xm_rd_nxt = d_rs2_predecoded_nxt else
-                                           "001" when mw_rd_nxt = d_rs2_predecoded_nxt else "100";
+        if rising_edge(clk) then
+            if ?? rst then
+                x_rs1_select_regs_xm_mw_reg <= "000";
+                x_rs2_select_regs_xm_mw_reg <= "000";
+            else
+                x_rs1_select_regs_xm_mw_reg <= "000" when d_rs1_predecoded_nxt = "00000"    else
+                                               "010" when xm_rd_nxt = d_rs1_predecoded_nxt else
+                                               "001" when mw_rd_nxt = d_rs1_predecoded_nxt else "100";
+                x_rs2_select_regs_xm_mw_reg <= "000" when d_rs2_predecoded_nxt = "00000"    else
+                                               "010" when xm_rd_nxt = d_rs2_predecoded_nxt else
+                                               "001" when mw_rd_nxt = d_rs2_predecoded_nxt else "100";
+            end if;
         end if;
     end process BYPASS_SELECT;
 
@@ -795,46 +791,48 @@ begin
     -- AMO stalls the pipe, then generates two bus transfers per 4-cycle
     -- iteration, unless it bails out due to a bus fault or failed load
     -- reservation.
-    AMO_PHASE : process(clk, rst_n) is
+    AMO_PHASE : process(clk) is
     begin
-        if ?? (not rst_n) then
-            x_amo_phase_reg <= "000";
-        elsif rising_edge(clk) then
-            if not EXTENSION_A then
-                -- Without atomics the phase stays 0. Assigned anyway, as a register that is only
-                -- assigned in the reset branch would be inferred as a latch by GHDL.
+        if rising_edge(clk) then
+            if ?? rst then
                 x_amo_phase_reg <= "000";
-            elsif d_memop_is_amo = '1' and (
-                (bus_aph_ready_d or bus_dph_ready_d or m_trap_enter_vld or x_unaligned_addr or x_loadstore_pmp_fail) = '1' or
-                x_amo_phase_reg = 4
-            ) then
-                if ?? m_trap_enter_vld then
-                    -- Bail out, squash the in-progress AMO.
+            else
+                if not EXTENSION_A then
+                    -- Without atomics the phase stays 0. Assigned anyway, as a register that is only
+                    -- assigned in the reset branch would be inferred as a latch by GHDL.
                     x_amo_phase_reg <= "000";
-                elsif ?? (x_stall_on_raw or x_stall_on_exclusive_overlap or m_trap_enter_soon) then
-                    -- First address phase stalled due to address dependency on
-                    -- previous load/mul/etc. Shouldn't be possible in later phases.
-                    x_amo_phase_reg <= "000";
-                elsif x_amo_phase_reg = 4 then
-                    -- Clear fault phase once it goes through to stage 3 and excepts
-                    if not x_stall then
+                elsif d_memop_is_amo = '1' and (
+                    (bus_aph_ready_d or bus_dph_ready_d or m_trap_enter_vld or x_unaligned_addr or x_loadstore_pmp_fail) = '1' or
+                    x_amo_phase_reg = 4
+                ) then
+                    if ?? m_trap_enter_vld then
+                        -- Bail out, squash the in-progress AMO.
                         x_amo_phase_reg <= "000";
+                    elsif ?? (x_stall_on_raw or x_stall_on_exclusive_overlap or m_trap_enter_soon) then
+                        -- First address phase stalled due to address dependency on
+                        -- previous load/mul/etc. Shouldn't be possible in later phases.
+                        x_amo_phase_reg <= "000";
+                    elsif x_amo_phase_reg = 4 then
+                        -- Clear fault phase once it goes through to stage 3 and excepts
+                        if not x_stall then
+                            x_amo_phase_reg <= "000";
+                        end if;
+                    elsif ?? (x_unaligned_addr or x_loadstore_pmp_fail) then
+                        x_amo_phase_reg <= "100";
+                    elsif x_amo_phase_reg = 1 and bus_dph_exokay_d = '0' then
+                        -- Load reserve fail indicates the memory region does not support
+                        -- exclusives, so we will never succeed at store. Exception.
+                        x_amo_phase_reg <= "100";
+                    elsif (x_amo_phase_reg = 1 or x_amo_phase_reg = 3) and bus_dph_err_d = '1' then
+                        -- Bus fault. Exception.
+                        x_amo_phase_reg <= "100";
+                    elsif x_amo_phase_reg = 3 then
+                        -- Either we're done, or the write failed. Either way, back to the start.
+                        x_amo_phase_reg <= "000";
+                    else
+                        -- Default progression: read addr -> read data -> write addr -> write data
+                        x_amo_phase_reg <= x_amo_phase_reg + 1;
                     end if;
-                elsif ?? (x_unaligned_addr or x_loadstore_pmp_fail) then
-                    x_amo_phase_reg <= "100";
-                elsif x_amo_phase_reg = 1 and bus_dph_exokay_d = '0' then
-                    -- Load reserve fail indicates the memory region does not support
-                    -- exclusives, so we will never succeed at store. Exception.
-                    x_amo_phase_reg <= "100";
-                elsif (x_amo_phase_reg = 1 or x_amo_phase_reg = 3) and bus_dph_err_d = '1' then
-                    -- Bus fault. Exception.
-                    x_amo_phase_reg <= "100";
-                elsif x_amo_phase_reg = 3 then
-                    -- Either we're done, or the write failed. Either way, back to the start.
-                    x_amo_phase_reg <= "000";
-                else
-                    -- Default progression: read addr -> read data -> write addr -> write data
-                    x_amo_phase_reg <= x_amo_phase_reg + 1;
                 end if;
             end if;
         end if;
@@ -905,12 +903,14 @@ begin
         signal x_muldiv_kill           : std_logic;
         signal x_muldiv_result_is_high : std_logic;
     begin
-        MULDIV_POSTED : process(clk, rst_n) is
+        MULDIV_POSTED : process(clk) is
         begin
-            if ?? (not rst_n) then
-                x_muldiv_posted_reg <= '0';
-            elsif rising_edge(clk) then
-                x_muldiv_posted_reg <= (x_muldiv_posted_reg or (x_muldiv_op_vld and x_muldiv_op_rdy)) and x_stall;
+            if rising_edge(clk) then
+                if ?? rst then
+                    x_muldiv_posted_reg <= '0';
+                else
+                    x_muldiv_posted_reg <= (x_muldiv_posted_reg or (x_muldiv_op_vld and x_muldiv_op_rdy)) and x_stall;
+                end if;
             end if;
         end process MULDIV_POSTED;
 
@@ -927,7 +927,7 @@ begin
             )
             port map(
                 clk        => clk,
-                rst_n      => rst_n,
+                rst        => rst,
                 op         => d_mulop,
                 op_vld     => x_muldiv_op_vld,
                 op_rdy     => x_muldiv_op_rdy,
@@ -964,7 +964,7 @@ begin
                 )
                 port map(
                     clk        => clk,
-                    rst_n      => rst_n,
+                    rst        => rst,
 
                     op_vld     => x_issue_fast_mul,
                     op         => d_mulop,
@@ -1054,7 +1054,7 @@ begin
             )
             port map(
                 clk                       => clk,
-                rst_n                     => rst_n,
+                rst                       => rst,
 
                 cfg_addr                  => x_pmp_cfg_addr,
                 cfg_wen                   => x_pmp_cfg_wen,
@@ -1094,7 +1094,7 @@ begin
             )
             port map(
                 clk              => clk,
-                rst_n            => rst_n,
+                rst              => rst,
 
                 cfg_addr         => std_logic_vector(x_trig_cfg_addr),
                 cfg_wen          => x_trig_cfg_wen,
@@ -1134,30 +1134,32 @@ begin
     x_csr_wdata <= std_logic_vector(resize(unsigned(fd_cir(19 downto 15)), DATA_WIDTH_C)) when ?? d_csr_w_imm else
                    x_rs1_bypass;
 
-    TRAP_HOLDOFF : process(clk, rst_n) is
+    TRAP_HOLDOFF : process(clk) is
     begin
-        if ?? (not rst_n) then
-            xm_delay_irq_entry_on_ls_stagex_reg <= '0';
-            prev_instr_was_32_bit_reg <= '0';
-        elsif rising_edge(clk) then
-            -- Must hold off IRQ if we are in the second cycle of an address phase or
-            -- later, since at that point the load/store can't be revoked. The IRQ is
-            -- taken once this load/store moves to the next stage: if another load/store
-            -- is chasing down the pipeline then this is immediately suppressed by the
-            -- IRQ entry, before its address phase can begin.
+        if rising_edge(clk) then
+            if ?? rst then
+                xm_delay_irq_entry_on_ls_stagex_reg <= '0';
+                prev_instr_was_32_bit_reg <= '0';
+            else
+                -- Must hold off IRQ if we are in the second cycle of an address phase or
+                -- later, since at that point the load/store can't be revoked. The IRQ is
+                -- taken once this load/store moves to the next stage: if another load/store
+                -- is chasing down the pipeline then this is immediately suppressed by the
+                -- IRQ entry, before its address phase can begin.
 
-            -- Also hold off on AMOs, unless the AMO is transitioning to an address
-            -- phase or completing. ("completing" excludes transitions to error phase.)
-            xm_delay_irq_entry_on_ls_stagex_reg <= (bus_aph_req_d and not bus_aph_ready_d) or
-                (d_memop_is_amo and not (
-                    (to_std_logic(x_amo_phase_reg = 3) and bus_dph_ready_d and not bus_dph_err_d) or
-                    -- Read reservation failure failure also generates error
-                    (to_std_logic(x_amo_phase_reg = 1) and bus_dph_ready_d and not bus_dph_err_d and bus_dph_exokay_d)
-                )) or
-                ((fence_i_vld or fence_d_vld) and not fence_rdy);
+                -- Also hold off on AMOs, unless the AMO is transitioning to an address
+                -- phase or completing. ("completing" excludes transitions to error phase.)
+                xm_delay_irq_entry_on_ls_stagex_reg <= (bus_aph_req_d and not bus_aph_ready_d) or
+                    (d_memop_is_amo and not (
+                        (to_std_logic(x_amo_phase_reg = 3) and bus_dph_ready_d and not bus_dph_err_d) or
+                        -- Read reservation failure failure also generates error
+                        (to_std_logic(x_amo_phase_reg = 1) and bus_dph_ready_d and not bus_dph_err_d and bus_dph_exokay_d)
+                    )) or
+                    ((fence_i_vld or fence_d_vld) and not fence_rdy);
 
-            if not x_stall then
-                prev_instr_was_32_bit_reg <= to_std_logic(df_cir_use = "10");
+                if not x_stall then
+                    prev_instr_was_32_bit_reg <= to_std_logic(df_cir_use = "10");
+                end if;
             end if;
         end if;
     end process TRAP_HOLDOFF;
@@ -1211,14 +1213,12 @@ begin
             NUMBER_OF_IRQs      => NUMBER_OF_IRQs,
             IRQ_PRIORITY_BITS   => IRQ_PRIORITY_BITS,
             IRQ_INPUTREG_BYPASS => IRQ_INPUTREG_BYPASS,
-            MTVEC_INIT          => MTVEC_INIT,
             CSR_M_MANDATORY     => CSR_M_MANDATORY,
             CSR_M_TRAP          => CSR_M_TRAP,
             CSR_COUNTER         => CSR_COUNTER,
             PMP_REGIONS         => PMP_REGIONS,
             EXTENSION_A         => EXTENSION_A,
             EXTENSION_C         => EXTENSION_C,
-            EXTENSION_E         => EXTENSION_E,
             EXTENSION_M         => EXTENSION_M,
             MUL_FAST            => MUL_FAST,
             MULH_FAST           => MULH_FAST,
@@ -1230,7 +1230,8 @@ begin
         port map(
             clk                        => clk,
             clk_always_on              => clk_always_on,
-            rst_n                      => rst_n,
+            rst                        => rst,
+            mtvec_init                 => mtvec_init,
 
             -- Debugger signalling
             debug_mode                 => debug_mode,
@@ -1313,58 +1314,60 @@ begin
 
     -- Pipe register
 
-    xm_rd_nxt <= REGADDR_MASK and xm_rd_reg when ?? m_stall                                     else
-                 (others => '0')            when ?? (x_stall or d_starved or m_trap_enter_soon) else
-                 REGADDR_MASK and d_rd;
+    xm_rd_nxt <= xm_rd_reg       when ?? m_stall                                     else
+                 (others => '0') when ?? (x_stall or d_starved or m_trap_enter_soon) else
+                 d_rd;
 
-    PIPE_REG : process(clk, rst_n) is
+    PIPE_REG : process(clk) is
     begin
-        if ?? (not rst_n) then
-            xm_memop_reg            <= MEMOP_C.NONE;
-            xm_except_reg           <= EXCEPT_C.NO_EXCEPTION;
-            xm_except_to_d_mode_reg <= '0';
-            xm_sleep_wfi_reg        <= '0';
-            xm_sleep_block_reg      <= '0';
-            unblock_out_reg         <= '0';
-            xm_rs1_reg              <= (others => '0');
-            xm_rs2_reg              <= (others => '0');
-            xm_rd_reg               <= (others => '0');
-        elsif rising_edge(clk) then
-            unblock_out_reg <= '0';
-            if not m_stall then
-                xm_rs1_reg <= REGADDR_MASK and d_rs1;
-                xm_rs2_reg <= REGADDR_MASK and d_rs2;
-                xm_rd_reg  <= REGADDR_MASK and d_rd;
-                -- If some X-sourced exception has squashed the address phase, need to squash the data phase too.
-                xm_memop_reg            <= MEMOP_C.NONE when x_except /= EXCEPT_C.NO_EXCEPTION else d_memop;
-                xm_except_reg           <= x_except;
-                xm_except_to_d_mode_reg <= x_trig_break_d_mode;
-                xm_sleep_wfi_reg        <= to_std_logic(x_except = EXCEPT_C.NO_EXCEPTION) and d_sleep_wfi;
-                xm_sleep_block_reg      <= to_std_logic(x_except = EXCEPT_C.NO_EXCEPTION) and d_sleep_block;
-                unblock_out_reg         <= to_std_logic(x_except = EXCEPT_C.NO_EXCEPTION) and d_sleep_unblock;
-                -- Note the d_starved term is required because it is possible
-                -- (e.g. PMP X permission fail) to except when the frontend is
-                -- starved, and we get a bad mepc if we let this jump ahead:
-                if ?? (x_stall or d_starved or m_trap_enter_soon) then
-                    -- Insert bubble
-                    xm_rd_reg               <= (others => '0');
-                    xm_memop_reg            <= MEMOP_C.NONE;
-                    xm_except_reg           <= EXCEPT_C.NO_EXCEPTION;
-                    xm_except_to_d_mode_reg <= '0';
-                    xm_sleep_wfi_reg        <= '0';
-                    xm_sleep_block_reg      <= '0';
-                    unblock_out_reg         <= '0';
-                end if;
-            elsif ?? bus_dph_err_d then
-                -- First phase of 2-phase AHB5 error response. Pass the exception along on
-                -- this cycle, and on the next cycle the trap entry will be asserted,
-                -- suppressing any load/store that may currently be in stage X.
-                if EXTENSION_A and xm_memop_reg = MEMOP_C.LOAD_RESERVED_WORD then
-                    xm_except_reg <= EXCEPT_C.LOAD_ACCESS_FAULT;
-                elsif unsigned(xm_memop_reg) <= unsigned(MEMOP_C.LOAD_BYTE_UNSIGNED) then
-                    xm_except_reg <= EXCEPT_C.LOAD_ACCESS_FAULT;
-                else
-                    xm_except_reg <= EXCEPT_C.STORE_ACCESS_FAULT;
+        if rising_edge(clk) then
+            if ?? rst then
+                xm_memop_reg            <= MEMOP_C.NONE;
+                xm_except_reg           <= EXCEPT_C.NO_EXCEPTION;
+                xm_except_to_d_mode_reg <= '0';
+                xm_sleep_wfi_reg        <= '0';
+                xm_sleep_block_reg      <= '0';
+                unblock_out_reg         <= '0';
+                xm_rs1_reg              <= (others => '0');
+                xm_rs2_reg              <= (others => '0');
+                xm_rd_reg               <= (others => '0');
+            else
+                unblock_out_reg <= '0';
+                if not m_stall then
+                    xm_rs1_reg <= d_rs1;
+                    xm_rs2_reg <= d_rs2;
+                    xm_rd_reg  <= d_rd;
+                    -- If some X-sourced exception has squashed the address phase, need to squash the data phase too.
+                    xm_memop_reg            <= MEMOP_C.NONE when x_except /= EXCEPT_C.NO_EXCEPTION else d_memop;
+                    xm_except_reg           <= x_except;
+                    xm_except_to_d_mode_reg <= x_trig_break_d_mode;
+                    xm_sleep_wfi_reg        <= to_std_logic(x_except = EXCEPT_C.NO_EXCEPTION) and d_sleep_wfi;
+                    xm_sleep_block_reg      <= to_std_logic(x_except = EXCEPT_C.NO_EXCEPTION) and d_sleep_block;
+                    unblock_out_reg         <= to_std_logic(x_except = EXCEPT_C.NO_EXCEPTION) and d_sleep_unblock;
+                    -- Note the d_starved term is required because it is possible
+                    -- (e.g. PMP X permission fail) to except when the frontend is
+                    -- starved, and we get a bad mepc if we let this jump ahead:
+                    if ?? (x_stall or d_starved or m_trap_enter_soon) then
+                        -- Insert bubble
+                        xm_rd_reg               <= (others => '0');
+                        xm_memop_reg            <= MEMOP_C.NONE;
+                        xm_except_reg           <= EXCEPT_C.NO_EXCEPTION;
+                        xm_except_to_d_mode_reg <= '0';
+                        xm_sleep_wfi_reg        <= '0';
+                        xm_sleep_block_reg      <= '0';
+                        unblock_out_reg         <= '0';
+                    end if;
+                elsif ?? bus_dph_err_d then
+                    -- First phase of 2-phase AHB5 error response. Pass the exception along on
+                    -- this cycle, and on the next cycle the trap entry will be asserted,
+                    -- suppressing any load/store that may currently be in stage X.
+                    if EXTENSION_A and xm_memop_reg = MEMOP_C.LOAD_RESERVED_WORD then
+                        xm_except_reg <= EXCEPT_C.LOAD_ACCESS_FAULT;
+                    elsif unsigned(xm_memop_reg) <= unsigned(MEMOP_C.LOAD_BYTE_UNSIGNED) then
+                        xm_except_reg <= EXCEPT_C.LOAD_ACCESS_FAULT;
+                    else
+                        xm_except_reg <= EXCEPT_C.STORE_ACCESS_FAULT;
+                    end if;
                 end if;
             end if;
         end if;
@@ -1373,28 +1376,30 @@ begin
     unblock_out <= unblock_out_reg;
 
     -- Datapath flops
-    DATAPATH_REG : process(clk, rst_n) is
+    DATAPATH_REG : process(clk) is
     begin
-        if ?? (not rst_n) then
-            xm_result_reg     <= (others => '0');
-            xm_addr_align_reg <= "00";
-        elsif rising_edge(clk) then
-            if m_stall = '0' and not (EXTENSION_A and x_amo_phase_reg = 3 and bus_dph_ready_d = '0') then
-                -- AMOs need special attention (of course):
-                -- - Steer captured read phase data in mw_result back through xm_result at end of AMO
-                -- - Make sure xm_result (store data) doesn't transition during stalled write dphase
-                if ?? d_csr_ren then
-                    xm_result_reg <= x_csr_rdata;
-                elsif EXTENSION_A and x_amo_phase_reg = 3 then
-                    xm_result_reg <= mw_result_reg;
-                elsif MUL_FASTER and x_use_fast_mul = '1' then
-                    xm_result_reg <= m_fast_mul_result;
-                elsif EXTENSION_M and d_aluop = ALUOP_C.MULDIV then
-                    xm_result_reg <= x_muldiv_result;
-                else
-                    xm_result_reg <= x_alu_result;
+        if rising_edge(clk) then
+            if ?? rst then
+                xm_result_reg     <= (others => '0');
+                xm_addr_align_reg <= "00";
+            else
+                if m_stall = '0' and not (EXTENSION_A and x_amo_phase_reg = 3 and bus_dph_ready_d = '0') then
+                    -- AMOs need special attention (of course):
+                    -- - Steer captured read phase data in mw_result back through xm_result at end of AMO
+                    -- - Make sure xm_result (store data) doesn't transition during stalled write dphase
+                    if ?? d_csr_ren then
+                        xm_result_reg <= x_csr_rdata;
+                    elsif EXTENSION_A and x_amo_phase_reg = 3 then
+                        xm_result_reg <= mw_result_reg;
+                    elsif MUL_FASTER and x_use_fast_mul = '1' then
+                        xm_result_reg <= m_fast_mul_result;
+                    elsif EXTENSION_M and d_aluop = ALUOP_C.MULDIV then
+                        xm_result_reg <= x_muldiv_result;
+                    else
+                        xm_result_reg <= x_alu_result;
+                    end if;
+                    xm_addr_align_reg <= x_addr_sum(1 downto 0);
                 end if;
-                xm_addr_align_reg <= x_addr_sum(1 downto 0);
             end if;
         end if;
     end process DATAPATH_REG;
@@ -1434,7 +1439,7 @@ begin
     power_ctrl : entity work.hazard3_power_ctrl
         port map(
             clk_always_on          => clk_always_on,
-            rst_n                  => rst_n,
+            rst                    => rst,
 
             pwrup_req              => pwrup_req,
             pwrup_ack              => pwrup_ack,
@@ -1513,25 +1518,27 @@ begin
     -- - Set on a load-reserved with good response from global monitor
     -- - Cleared by any store-conditional
     -- - Cleared by non-debug-related trap exit
-    LOCAL_MONITOR : process(clk, rst_n) is
+    LOCAL_MONITOR : process(clk) is
     begin
-        if ?? (not rst_n) then
-            mw_local_exclusive_reserved_reg <= '0';
-        elsif rising_edge(clk) then
-            if EXTENSION_A and (m_stall = '0' or bus_dph_err_d = '1') then
-                if ?? d_memop_is_amo then
-                    mw_local_exclusive_reserved_reg <= '0';
-                elsif xm_memop_reg = MEMOP_C.STORE_CONDITIONAL_WORD and (bus_dph_ready_d or bus_dph_err_d) = '1' then
-                    mw_local_exclusive_reserved_reg <= '0';
-                elsif xm_memop_reg = MEMOP_C.LOAD_RESERVED_WORD and bus_dph_ready_d = '1' then
-                    -- In theory, the bus should never report HEXOKAY when HRESP is asserted.
-                    -- Still might happen (e.g. if HEXOKAY is tied high), so mask HEXOKAY with
-                    -- HRESP to be sure a failed lr.w clears the monitor.
-                    mw_local_exclusive_reserved_reg <= bus_dph_exokay_d and not bus_dph_err_d;
-                end if;
-            end if;
-            if ?? m_clear_excl_on_trap_exit then
+        if rising_edge(clk) then
+            if ?? rst then
                 mw_local_exclusive_reserved_reg <= '0';
+            else
+                if EXTENSION_A and (m_stall = '0' or bus_dph_err_d = '1') then
+                    if ?? d_memop_is_amo then
+                        mw_local_exclusive_reserved_reg <= '0';
+                    elsif xm_memop_reg = MEMOP_C.STORE_CONDITIONAL_WORD and (bus_dph_ready_d or bus_dph_err_d) = '1' then
+                        mw_local_exclusive_reserved_reg <= '0';
+                    elsif xm_memop_reg = MEMOP_C.LOAD_RESERVED_WORD and bus_dph_ready_d = '1' then
+                        -- In theory, the bus should never report HEXOKAY when HRESP is asserted.
+                        -- Still might happen (e.g. if HEXOKAY is tied high), so mask HEXOKAY with
+                        -- HRESP to be sure a failed lr.w clears the monitor.
+                        mw_local_exclusive_reserved_reg <= bus_dph_exokay_d and not bus_dph_err_d;
+                    end if;
+                end if;
+                if ?? m_clear_excl_on_trap_exit then
+                    mw_local_exclusive_reserved_reg <= '0';
+                end if;
             end if;
         end if;
     end process LOCAL_MONITOR;
@@ -1543,28 +1550,27 @@ begin
     m_reg_wen_if_nonzero <= not m_bus_stall when xm_except_reg = EXCEPT_C.NO_EXCEPTION else '0';
     m_reg_wen            <= (or xm_rd_reg) and m_reg_wen_if_nonzero;
 
-    MW_RESULT_UPDATE : process(clk, rst_n) is
+    MW_RESULT_UPDATE : process(clk) is
     begin
-        if ?? (not rst_n) then
-            mw_result_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            -- (don't trash the captured AMO read phase data during stage 2/3 of AMO -- we need it!)
-            if m_reg_wen_if_nonzero = '1' and not (EXTENSION_A and x_amo_phase_reg(1) = '1') then
+        if rising_edge(clk) then
+            if ?? rst then
+                mw_result_reg <= (others => '0');
+            elsif m_reg_wen_if_nonzero = '1' and not (EXTENSION_A and x_amo_phase_reg(1) = '1') then
+                -- (don't trash the captured AMO read phase data during stage 2/3 of AMO -- we need it!)
                 mw_result_reg <= m_result;
             end if;
         end if;
     end process MW_RESULT_UPDATE;
 
-    mw_rd_nxt <= REGADDR_MASK and xm_rd_reg when ?? m_reg_wen_if_nonzero else
-                 REGADDR_MASK and mw_rd_reg;
+    mw_rd_nxt <= xm_rd_reg when ?? m_reg_wen_if_nonzero else mw_rd_reg;
 
-    MW_RD_UPDATE : process(clk, rst_n) is
+    MW_RD_UPDATE : process(clk) is
     begin
-        if ?? (not rst_n) then
-            mw_rd_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if ?? m_reg_wen_if_nonzero then
-                mw_rd_reg <= REGADDR_MASK and xm_rd_reg;
+        if rising_edge(clk) then
+            if ?? rst then
+                mw_rd_reg <= (others => '0');
+            elsif ?? m_reg_wen_if_nonzero then
+                mw_rd_reg <= xm_rd_reg;
             end if;
         end if;
     end process MW_RD_UPDATE;
@@ -1575,13 +1581,8 @@ begin
     x_regfile_raddr2 <= d_rs2 when ?? (x_stall and not d_starved) else f_rs2_coarse;
 
     regs : entity work.hazard3_regfile_1w2r
-        generic map(
-            EXTENSION_E   => EXTENSION_E,
-            RESET_REGFILE => RESET_REGFILE
-        )
         port map(
             clk    => clk,
-            rst_n  => rst_n,
 
             raddr1 => x_regfile_raddr1,
             rdata1 => x_rdata1,

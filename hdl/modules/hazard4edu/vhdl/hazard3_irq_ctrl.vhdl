@@ -10,7 +10,7 @@ entity hazard3_irq_ctrl is
     generic(
         -- Number of external IRQs. Note that if EXTENSION_XH3IRQ (IRQ Controller) is disabled, then
         -- multiple external interrupts are OR'd into mip.meip
-        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C  := 1;
+        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C  := 8;
         -- Number of priority bits implemented for each interrupt in meipra, if EXTENSION_XH3IRQ is enabled.
         -- The number of distinct levels is (1 << IRQ_PRIORITY_BITS), min. 0, max. 4. Note that multiple
         -- priority levels with a large number of IRQs will have a severe effect on timing.
@@ -22,7 +22,7 @@ entity hazard3_irq_ctrl is
     port(
         clk           : in std_logic;
         clk_always_on : in std_logic;
-        rst_n         : in std_logic;
+        rst           : in std_logic;
 
         -- CSR interface
         addr        : in  unsigned(CSR_ADDRESS_WIDTH_C - 1 downto 0);
@@ -116,12 +116,14 @@ begin
         BYPASS : if IRQ_INPUTREG_BYPASS(i) generate
             irq_reg(i) <= irq(i);
         else generate
-            IRQ_FF : process(clk_always_on, rst_n) is
+            IRQ_FF : process(clk_always_on) is
             begin
-                if rst_n = '0' then
-                    irq_reg(i) <= '0';
-                elsif rising_edge(clk_always_on) then
-                    irq_reg(i) <= irq(i);
+                if rising_edge(clk_always_on) then
+                    if ?? rst then
+                        irq_reg(i) <= '0';
+                    else
+                        irq_reg(i) <= irq(i);
+                    end if;
                 end if;
             end process IRQ_FF;
         end generate BYPASS;
@@ -133,89 +135,93 @@ begin
     meifa_rdata <= resize(meifa_reg, meifa_rdata'length);
     meipra_rdata <= resize(meipra_reg, meipra_rdata'length);
 
-    UPDATE_IRQ_REG_ARRAYS : process(clk, rst_n) is
+    UPDATE_IRQ_REG_ARRAYS : process(clk) is
         variable i_vec : signed(IRQ_INDEX_BITS - 1 downto 0);
     begin
-        if rst_n = '0' then
-            meiea_reg <= (others => '0');
-            meifa_reg <= (others => '0');
-            meipra_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            for i in 0 to NUMBER_OF_IRQs - 1 loop
-                i_vec := to_signed(i, IRQ_INDEX_BITS);
+        if rising_edge(clk) then
+            if ?? rst then
+                meiea_reg <= (others => '0');
+                meifa_reg <= (others => '0');
+                meipra_reg <= (others => '0');
+            else
+                for i in 0 to NUMBER_OF_IRQs - 1 loop
+                    i_vec := to_signed(i, IRQ_INDEX_BITS);
 
-                -- CSR write update. Note raw wdata is used for array indexing
-                -- Necessary for correctness, and also avoid a loop with rdata.
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEIEA and 
-                   signed(wdata_raw(4 downto 0)) = i_vec(IRQ_INDEX_BITS - 1 downto 4) then
-                    meiea_reg(i) <= wdata(16 + (i mod 16));
-                end if;
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEIFA and 
-                   signed(wdata_raw(4 downto 0)) = i_vec(IRQ_INDEX_BITS - 1 downto 4) then
-                    meifa_reg(i) <= wdata(16 + (i mod 16));
-                end if;
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEIPRA and 
-                   signed(wdata_raw(6 downto 0)) = i_vec(IRQ_INDEX_BITS - 1 downto 2) then
-                    meipra_reg(4 * i + 3 downto 4 * i) <= wdata(16 + 4 * (i mod 4) + 3 downto 16 + 4 * (i mod 4)) and IRQ_PRIORITY_MASK;
-                end if;
+                    -- CSR write update. Note raw wdata is used for array indexing
+                    -- Necessary for correctness, and also avoid a loop with rdata.
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEIEA and 
+                       signed(wdata_raw(4 downto 0)) = i_vec(IRQ_INDEX_BITS - 1 downto 4) then
+                        meiea_reg(i) <= wdata(16 + (i mod 16));
+                    end if;
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEIFA and 
+                       signed(wdata_raw(4 downto 0)) = i_vec(IRQ_INDEX_BITS - 1 downto 4) then
+                        meifa_reg(i) <= wdata(16 + (i mod 16));
+                    end if;
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEIPRA and 
+                       signed(wdata_raw(6 downto 0)) = i_vec(IRQ_INDEX_BITS - 1 downto 2) then
+                        meipra_reg(4 * i + 3 downto 4 * i) <= wdata(16 + 4 * (i mod 4) + 3 downto 16 + 4 * (i mod 4)) and IRQ_PRIORITY_MASK;
+                    end if;
 
-                -- Clear IRQ force when the corresponding IRQ is sampled from meinext
-                -- (so that an IRQ can be posted *once* without modifying the ISR source)
-                if meinext_irq = std_logic_vector(i_vec) and ren_m_mode = '1' and 
-                   addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEINEXT and meinext_noirq = '0' then
-                    meifa_reg(i) <= '0';
-                end if;
-            end loop;            
+                    -- Clear IRQ force when the corresponding IRQ is sampled from meinext
+                    -- (so that an IRQ can be posted *once* without modifying the ISR source)
+                    if meinext_irq = std_logic_vector(i_vec) and ren_m_mode = '1' and 
+                       addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEINEXT and meinext_noirq = '0' then
+                        meifa_reg(i) <= '0';
+                    end if;
+                end loop;            
+            end if;
         end if;
     end process UPDATE_IRQ_REG_ARRAYS;
     
     preempt_level_next <= 5x"10" when meinext_noirq = '1' else shift_left(5d"1", 4 - IRQ_PRIORITY_BITS) + resize(eirq_highest_priority, 5);
         
-    process(clk, rst_n) is
+    process(clk) is
     begin
-        if rst_n = '0' then
-            meicontext_pppreempt_reg <= (others => '0');
-            meicontext_ppreempt_reg <= (others => '0');
-            meicontext_preempt_reg <= (others => '0');
-            meicontext_noirq_reg <= '1';
-            meicontext_irq_reg <= (others => '0');
-            meicontext_mreteirq_reg <= '0';
-        elsif rising_edge(clk) then
-            if trapreg_update_enter = '1' then
-                if trap_entry_is_eirq = '1' then
-                    -- Priority save. Note the MSB of preempt needn't be saved, since
-                    -- when it is set, preemption is impossible, so we won't be here.
-                    meicontext_pppreempt_reg <= meicontext_ppreempt_reg and IRQ_PRIORITY_MASK;
-                    meicontext_ppreempt_reg <= meicontext_preempt_reg(3 downto 0) and IRQ_PRIORITY_MASK;
-                    -- Setting preempt isn't strictly necessary, since an updating read
-                    -- of meinext ought to be performed before re-enabling IRQs via 
-                    -- mstatus.mie, but it seems the least surprising thing to do:
-                    meicontext_preempt_reg <= preempt_level_next and ('1' & IRQ_PRIORITY_MASK);
-                    meicontext_mreteirq_reg <= '1';
-                else
-                    meicontext_mreteirq_reg <= '0';
-                end if;
-            elsif trapreg_update_exit = '1' then
+        if rising_edge(clk) then
+            if ?? rst then
+                meicontext_pppreempt_reg <= (others => '0');
+                meicontext_ppreempt_reg <= (others => '0');
+                meicontext_preempt_reg <= (others => '0');
+                meicontext_noirq_reg <= '1';
+                meicontext_irq_reg <= (others => '0');
                 meicontext_mreteirq_reg <= '0';
-                if meicontext_mreteirq_reg = '1' then
-                    -- Priority restore
-                    meicontext_pppreempt_reg <= (others => '0');
-                    meicontext_ppreempt_reg <= meicontext_pppreempt_reg and IRQ_PRIORITY_MASK;
-                    meicontext_preempt_reg <= '0' & (meicontext_ppreempt_reg and IRQ_PRIORITY_MASK);
+            else
+                if trapreg_update_enter = '1' then
+                    if trap_entry_is_eirq = '1' then
+                        -- Priority save. Note the MSB of preempt needn't be saved, since
+                        -- when it is set, preemption is impossible, so we won't be here.
+                        meicontext_pppreempt_reg <= meicontext_ppreempt_reg and IRQ_PRIORITY_MASK;
+                        meicontext_ppreempt_reg <= meicontext_preempt_reg(3 downto 0) and IRQ_PRIORITY_MASK;
+                        -- Setting preempt isn't strictly necessary, since an updating read
+                        -- of meinext ought to be performed before re-enabling IRQs via 
+                        -- mstatus.mie, but it seems the least surprising thing to do:
+                        meicontext_preempt_reg <= preempt_level_next and ('1' & IRQ_PRIORITY_MASK);
+                        meicontext_mreteirq_reg <= '1';
+                    else
+                        meicontext_mreteirq_reg <= '0';
+                    end if;
+                elsif trapreg_update_exit = '1' then
+                    meicontext_mreteirq_reg <= '0';
+                    if meicontext_mreteirq_reg = '1' then
+                        -- Priority restore
+                        meicontext_pppreempt_reg <= (others => '0');
+                        meicontext_ppreempt_reg <= meicontext_pppreempt_reg and IRQ_PRIORITY_MASK;
+                        meicontext_preempt_reg <= '0' & (meicontext_ppreempt_reg and IRQ_PRIORITY_MASK);
+                    end if;
+                elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEICONTEXT then
+                    meicontext_pppreempt_reg <= wdata(31 downto 28) and IRQ_PRIORITY_MASK;
+                    meicontext_ppreempt_reg <= wdata(27 downto 24) and IRQ_PRIORITY_MASK;
+                    meicontext_preempt_reg <= wdata(20 downto 16) and ('1' & IRQ_PRIORITY_MASK);
+                    meicontext_noirq_reg <= wdata(15);
+                    meicontext_irq_reg <= wdata(12 downto 4);
+                    meicontext_mreteirq_reg <= wdata(0);
+                elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEINEXT and wdata(0) = '1' then
+                    -- Interrupt has been sampled, with the update request set, so update
+                    -- the context (including preemption level) appropriately.
+                    meicontext_preempt_reg <= preempt_level_next and ('1' & IRQ_PRIORITY_MASK);
+                    meicontext_noirq_reg <= meinext_noirq;
+                    meicontext_irq_reg <= meinext_irq;
                 end if;
-            elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEICONTEXT then
-                meicontext_pppreempt_reg <= wdata(31 downto 28) and IRQ_PRIORITY_MASK;
-                meicontext_ppreempt_reg <= wdata(27 downto 24) and IRQ_PRIORITY_MASK;
-                meicontext_preempt_reg <= wdata(20 downto 16) and ('1' & IRQ_PRIORITY_MASK);
-                meicontext_noirq_reg <= wdata(15);
-                meicontext_irq_reg <= wdata(12 downto 4);
-                meicontext_mreteirq_reg <= wdata(0);
-            elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEINEXT and wdata(0) = '1' then
-                -- Interrupt has been sampled, with the update request set, so update
-                -- the context (including preemption level) appropriately.
-                meicontext_preempt_reg <= preempt_level_next and ('1' & IRQ_PRIORITY_MASK);
-                meicontext_noirq_reg <= meinext_noirq;
-                meicontext_irq_reg <= meinext_irq;
             end if;
         end if;        
     end process;

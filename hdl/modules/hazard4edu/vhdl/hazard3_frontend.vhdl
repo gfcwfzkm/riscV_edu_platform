@@ -6,18 +6,18 @@ use work.hazard3_constants.all;
 
 entity hazard3_frontend is
     generic(
-        RESET_VECTOR     : unsigned(31 downto 0) := x"0000_0000";
         PMP_REGIONS      : natural               := 0;
         EXTENSION_C      : boolean               := true;
-        EXTENSION_E      : boolean               := true;
         EXTENSION_M      : boolean               := true;
         U_MODE           : boolean               := false;
-        DEBUG_SUPPORT    : boolean               := false;
-        BRANCH_PREDICTOR : boolean               := false
+        DEBUG_SUPPORT    : boolean               := true;
+        BRANCH_PREDICTOR : boolean               := true
     );
     port(
         clk                  : in  std_logic;
-        rst_n                : in  std_logic;
+        rst                  : in  std_logic;
+
+        reset_vector         : in  std_logic_vector(31 downto 0);
         -- Fetch interface
         -- addr_vld may be asserted at any time, but after assertion,
         -- neither addr nor addr_vld may change until the cycle after addr_rdy.
@@ -328,48 +328,50 @@ begin
         end loop;        
     end process BOUNDARY_CONDITION;
 
-    FIFO_UPDATE : process (clk, rst_n) is
+    FIFO_UPDATE : process(clk) is
     begin
-        if ?? (not rst_n) then
-            for i in 0 to FIFO_DEPTH - 1 loop
-                fifo_mem_reg(i) <= (others => '0');
-                fifo_predbranch_reg(i) <= (others => '0');
-                fifo_err_reg(i) <= '0';
-                fifo_break_any_reg(i) <= (others => '0');
-                fifo_break_d_mode_reg(i) <= (others => '0');
-            end loop;
-            fifo_valid_hw_reg <= (others => (others => '0'));
-        elsif rising_edge(clk) then
-            for i in 0 to FIFO_DEPTH - 1 loop
-                if ?? (fifo_pop or (fifo_push and not fifo_valid_reg(i))) then
-                    fifo_mem_reg(i)          <= fifo_mem_reg(i + 1)          when ?? fifo_valid_reg(i + 1) else mem_data;
-                    fifo_err_reg(i)          <= fifo_err_reg(i + 1)          when ?? fifo_valid_reg(i + 1) else mem_or_pmp_err;
-                    fifo_break_any_reg(i)    <= fifo_break_any_reg(i + 1)    when ?? fifo_valid_reg(i + 1) else mem_break_any;
-                    fifo_break_d_mode_reg(i) <= fifo_break_d_mode_reg(i + 1) when ?? fifo_valid_reg(i + 1) else mem_break_d_mode;
-                    fifo_predbranch_reg(i)   <= fifo_predbranch_reg(i + 1)   when ?? fifo_valid_reg(i + 1) else mem_data_predbranch_reg;
+        if rising_edge(clk) then
+            if ?? rst then
+                for i in 0 to FIFO_DEPTH - 1 loop
+                    fifo_mem_reg(i) <= (others => '0');
+                    fifo_predbranch_reg(i) <= (others => '0');
+                    fifo_err_reg(i) <= '0';
+                    fifo_break_any_reg(i) <= (others => '0');
+                    fifo_break_d_mode_reg(i) <= (others => '0');
+                end loop;
+                fifo_valid_hw_reg <= (others => (others => '0'));
+            else
+                for i in 0 to FIFO_DEPTH - 1 loop
+                    if ?? (fifo_pop or (fifo_push and not fifo_valid_reg(i))) then
+                        fifo_mem_reg(i)          <= fifo_mem_reg(i + 1)          when ?? fifo_valid_reg(i + 1) else mem_data;
+                        fifo_err_reg(i)          <= fifo_err_reg(i + 1)          when ?? fifo_valid_reg(i + 1) else mem_or_pmp_err;
+                        fifo_break_any_reg(i)    <= fifo_break_any_reg(i + 1)    when ?? fifo_valid_reg(i + 1) else mem_break_any;
+                        fifo_break_d_mode_reg(i) <= fifo_break_d_mode_reg(i + 1) when ?? fifo_valid_reg(i + 1) else mem_break_d_mode;
+                        fifo_predbranch_reg(i)   <= fifo_predbranch_reg(i + 1)   when ?? fifo_valid_reg(i + 1) else mem_data_predbranch_reg;
+                    end if;
+                    fifo_valid_hw_reg(i) <= (others => '0')          when ?? jump_now                                              else
+                                            fifo_valid_hw_reg(i + 1) when ?? (fifo_valid_reg(i + 1) and fifo_pop)                  else
+                                            mem_data_hwvld_reg and (1 downto 0 => fifo_push)
+                                                                     when ?? (fifo_valid_reg(i) and fifo_pop)                      else
+                                            fifo_valid_hw_reg(i)     when ?? fifo_valid_reg(i)                                     else
+                                            mem_data_hwvld_reg       when ?? (fifo_push and not fifo_pop and fifo_valid_m1_reg(i)) else
+                                            (others => '0');
+                end loop;
+    		    -- Allow DM to inject instructions directly into the lowest-numbered
+    		    -- queue entry. This mux should not extend critical path since it is
+    		    -- balanced with the instruction-assembly muxes on the queue bypass
+    		    -- path. Note that flush takes precedence over debug injection
+    		    -- (and the debug module design must account for this)
+                if ?? fifo_dbg_inject then
+                    fifo_mem_reg(0) <= dbg_instr_data;
+                    fifo_err_reg(0) <= '0';
+                    fifo_predbranch_reg(0) <= (others => '0');
+                    fifo_break_any_reg(0) <= (others => '0');
+                    fifo_break_d_mode_reg(0) <= (others => '0');
+                    fifo_valid_hw_reg(0) <= "00" when ?? jump_now else "11";
                 end if;
-                fifo_valid_hw_reg(i) <= (others => '0')          when ?? jump_now                                              else
-                                        fifo_valid_hw_reg(i + 1) when ?? (fifo_valid_reg(i + 1) and fifo_pop)                  else
-                                        mem_data_hwvld_reg and (1 downto 0 => fifo_push)
-                                                                 when ?? (fifo_valid_reg(i) and fifo_pop)                      else
-                                        fifo_valid_hw_reg(i)     when ?? fifo_valid_reg(i)                                     else
-                                        mem_data_hwvld_reg       when ?? (fifo_push and not fifo_pop and fifo_valid_m1_reg(i)) else
-                                        (others => '0');
-            end loop;
-		    -- Allow DM to inject instructions directly into the lowest-numbered
-		    -- queue entry. This mux should not extend critical path since it is
-		    -- balanced with the instruction-assembly muxes on the queue bypass
-		    -- path. Note that flush takes precedence over debug injection
-		    -- (and the debug module design must account for this)
-            if ?? fifo_dbg_inject then
-                fifo_mem_reg(0) <= dbg_instr_data;
-                fifo_err_reg(0) <= '0';
-                fifo_predbranch_reg(0) <= (others => '0');
-                fifo_break_any_reg(0) <= (others => '0');
-                fifo_break_d_mode_reg(0) <= (others => '0');
-                fifo_valid_hw_reg(0) <= "00" when ?? jump_now else "11";
+                fifo_valid_hw_reg(FIFO_DEPTH) <= (others => '0');
             end if;
-            fifo_valid_hw_reg(FIFO_DEPTH) <= (others => '0');
         end if;
     end process FIFO_UPDATE;
     
@@ -384,22 +386,24 @@ begin
         btb_target_addr <= btb_target_addr_reg;
         btb_valid       <= btb_valid_reg;
 
-        process(clk, rst_n) begin
-            if ?? (not rst_n) then
-                btb_src_addr_reg <= (others => '0');
-                btb_src_size_reg <= '0';
-                btb_target_addr_reg <= (others => '0');
-                btb_valid_reg <= '0';
-            elsif rising_edge(clk) then
-                if ?? btb_clear then
-                    -- Clear takes precedences over set. E.g. if a taken branch is in
-                    -- stage 2 and a exception is in stage 3, we must clear the BTB.
+        process(clk) begin
+            if rising_edge(clk) then
+                if ?? rst then
+                    btb_src_addr_reg <= (others => '0');
+                    btb_src_size_reg <= '0';
+                    btb_target_addr_reg <= (others => '0');
                     btb_valid_reg <= '0';
-                elsif ?? btb_set then
-                    btb_src_addr_reg <= btb_set_src_addr;
-                    btb_src_size_reg <= btb_set_src_size;
-                    btb_target_addr_reg <= btb_set_target_addr;
-                    btb_valid_reg <= '1';
+                else
+                    if ?? btb_clear then
+                        -- Clear takes precedences over set. E.g. if a taken branch is in
+                        -- stage 2 and a exception is in stage 3, we must clear the BTB.
+                        btb_valid_reg <= '0';
+                    elsif ?? btb_set then
+                        btb_src_addr_reg <= btb_set_src_addr;
+                        btb_src_size_reg <= btb_set_src_size;
+                        btb_target_addr_reg <= btb_set_target_addr;
+                        btb_valid_reg <= '1';
+                    end if;
                 end if;
             end if;
         end process;
@@ -442,34 +446,38 @@ begin
     -- Post-increment if jump request is going straight through
     jump_target_post_increment <= (jump_target(jump_target'length - 1 downto 2) & "00") + 32d"4" when ?? (mem_addr_rdy and not mem_addr_hold_reg) else (jump_target(jump_target'length - 1 downto 2) & "00");
     
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            fetch_addr_reg <= RESET_VECTOR;
-            -- M-Mode at reset:
-            fetch_priv_reg <= '1';
-            btb_prev_start_of_overhanging_reg <= '0';
-        elsif rising_edge(clk) then
-            if ?? jump_now then
-                fetch_addr_reg <= jump_target_post_increment;
-                fetch_priv_reg <= jump_priv when U_MODE else '1';
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                fetch_addr_reg <= unsigned(reset_vector);
+                -- M-Mode at reset:
+                fetch_priv_reg <= '1';
                 btb_prev_start_of_overhanging_reg <= '0';
-            elsif ?? (mem_addr_vld and mem_addr_rdy) then
-                if btb_match_now = '1' and BRANCH_PREDICTOR then
-                    fetch_addr_reg <= btb_target_addr(btb_target_addr'length - 1 downto 2) & "00";
-                else
-                    fetch_addr_reg <= fetch_addr_reg + 32d"4";
+            else
+                if ?? jump_now then
+                    fetch_addr_reg <= jump_target_post_increment;
+                    fetch_priv_reg <= jump_priv when U_MODE else '1';
+                    btb_prev_start_of_overhanging_reg <= '0';
+                elsif ?? (mem_addr_vld and mem_addr_rdy) then
+                    if btb_match_now = '1' and BRANCH_PREDICTOR then
+                        fetch_addr_reg <= btb_target_addr(btb_target_addr'length - 1 downto 2) & "00";
+                    else
+                        fetch_addr_reg <= fetch_addr_reg + 32d"4";
+                    end if;
+                    btb_prev_start_of_overhanging_reg <= btb_match_next_addr;
                 end if;
-                btb_prev_start_of_overhanging_reg <= btb_match_next_addr;
             end if;
         end if;
     end process;
 
     -- Combinatorially generate the address-phase request
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            reset_holdoff_reg <= '1';
-        elsif rising_edge(clk) then
-            reset_holdoff_reg <= '0';
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                reset_holdoff_reg <= '1';
+            else
+                reset_holdoff_reg <= '0';
+            end if;
         end if;
     end process;
 
@@ -526,57 +534,61 @@ begin
                          not (DEBUG_SUPPORT and debug_mode = '1') 
                      else '0';
         
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mem_addr_hold_reg <= '0';
-            pending_fetches_reg <= (others => '0');
-            ctr_flush_pending_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            mem_addr_hold_reg <= mem_addr_vld and not mem_addr_rdy;
-            pending_fetches_reg <= pending_fetches_next;
-            if ?? jump_now then
-                ctr_flush_pending_reg <= pending_fetches_reg - 1 when ?? mem_data_vld else pending_fetches_reg;
-            elsif ?? ((or ctr_flush_pending_reg) and mem_data_vld) then
-                ctr_flush_pending_reg <= ctr_flush_pending_reg - 1;
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                mem_addr_hold_reg <= '0';
+                pending_fetches_reg <= (others => '0');
+                ctr_flush_pending_reg <= (others => '0');
+            else
+                mem_addr_hold_reg <= mem_addr_vld and not mem_addr_rdy;
+                pending_fetches_reg <= pending_fetches_next;
+                if ?? jump_now then
+                    ctr_flush_pending_reg <= pending_fetches_reg - 1 when ?? mem_data_vld else pending_fetches_reg;
+                elsif ?? ((or ctr_flush_pending_reg) and mem_data_vld) then
+                    ctr_flush_pending_reg <= ctr_flush_pending_reg - 1;
+                end if;
             end if;
         end if;
     end process;
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mem_data_hwvld_reg <= (others => '1');
-            mem_aph_hwvld_reg <= (others => '1');
-            mem_data_predbranch_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if not EXTENSION_C then
-                -- Without C these never leave their reset value. Assign it explicitly,
-                -- otherwise GHDL infers a latch from the reset-only assignment.
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 mem_data_hwvld_reg <= (others => '1');
                 mem_aph_hwvld_reg <= (others => '1');
-            end if;
-            if ?? jump_now then
-                if EXTENSION_C then
-                    if ?? mem_addr_rdy then
-                        mem_aph_hwvld_reg <= (others => '1');
-                        mem_data_hwvld_reg <= '1' & not jump_target(1);
-                    else
-                        mem_aph_hwvld_reg <= '1' & not jump_target(1);
-                    end if;
-                end if;
                 mem_data_predbranch_reg <= (others => '0');
-            elsif ?? (mem_addr_vld and mem_addr_rdy) then
-                if EXTENSION_C then
-                    -- If a predicted-taken branch instruction only spans the first
-                    -- half of a word, need to flag the second half as invalid.
-                    mem_data_hwvld_reg <= (mem_aph_hwvld_reg and "01") when BRANCH_PREDICTOR and btb_match_now = '1' and btb_src_addr(1) = btb_src_size else mem_aph_hwvld_reg;
-                    -- Also need to take the alignment of the destination into account.
-                    mem_aph_hwvld_reg <= "10" when BRANCH_PREDICTOR and btb_match_now = '1' and btb_target_addr(1) = '1' else "11";
+            else
+                if not EXTENSION_C then
+                    -- Without C these never leave their reset value. Assign it explicitly,
+                    -- otherwise GHDL infers a latch from the reset-only assignment.
+                    mem_data_hwvld_reg <= (others => '1');
+                    mem_aph_hwvld_reg <= (others => '1');
                 end if;
-                mem_data_predbranch_reg <= "10" when BRANCH_PREDICTOR and btb_match_word = '1' and btb_src_addr(1) = '1' else
-                                           "11" when BRANCH_PREDICTOR and btb_match_word = '1' and btb_src_size = '1'    else
-                                           "01" when BRANCH_PREDICTOR and btb_match_word = '1'                           else
-                                           "01" when BRANCH_PREDICTOR and btb_prev_start_of_overhanging_reg = '1'        else
-                                           "00";
+                if ?? jump_now then
+                    if EXTENSION_C then
+                        if ?? mem_addr_rdy then
+                            mem_aph_hwvld_reg <= (others => '1');
+                            mem_data_hwvld_reg <= '1' & not jump_target(1);
+                        else
+                            mem_aph_hwvld_reg <= '1' & not jump_target(1);
+                        end if;
+                    end if;
+                    mem_data_predbranch_reg <= (others => '0');
+                elsif ?? (mem_addr_vld and mem_addr_rdy) then
+                    if EXTENSION_C then
+                        -- If a predicted-taken branch instruction only spans the first
+                        -- half of a word, need to flag the second half as invalid.
+                        mem_data_hwvld_reg <= (mem_aph_hwvld_reg and "01") when BRANCH_PREDICTOR and btb_match_now = '1' and btb_src_addr(1) = btb_src_size else mem_aph_hwvld_reg;
+                        -- Also need to take the alignment of the destination into account.
+                        mem_aph_hwvld_reg <= "10" when BRANCH_PREDICTOR and btb_match_now = '1' and btb_target_addr(1) = '1' else "11";
+                    end if;
+                    mem_data_predbranch_reg <= "10" when BRANCH_PREDICTOR and btb_match_word = '1' and btb_src_addr(1) = '1' else
+                                               "11" when BRANCH_PREDICTOR and btb_match_word = '1' and btb_src_size = '1'    else
+                                               "01" when BRANCH_PREDICTOR and btb_match_word = '1'                           else
+                                               "01" when BRANCH_PREDICTOR and btb_prev_start_of_overhanging_reg = '1'        else
+                                               "00";
+                end if;
             end if;
         end if;
     end process;
@@ -593,14 +605,16 @@ begin
 
     CHECK_REGISTER_SUPPORT : if PMP_REGIONS > 0 or DEBUG_SUPPORT generate
         -- Have check registers
-        process(clk, rst_n) begin
-            if ?? (not rst_n) then
-                check_addr_dph_reg <= (others => '0');
-                check_m_mode_dph_reg <= '0';
-            elsif rising_edge(clk) then
-                if ?? (mem_addr_vld and mem_addr_rdy) then
-                    check_addr_dph_reg <= mem_addr;
-                    check_m_mode_dph_reg <= mem_priv_reg;
+        process(clk) begin
+            if rising_edge(clk) then
+                if ?? rst then
+                    check_addr_dph_reg <= (others => '0');
+                    check_m_mode_dph_reg <= '0';
+                else
+                    if ?? (mem_addr_vld and mem_addr_rdy) then
+                        check_addr_dph_reg <= mem_addr;
+                        check_m_mode_dph_reg <= mem_priv_reg;
+                    end if;
                 end if;
             end if;
         end process;
@@ -715,18 +729,20 @@ begin
     buf_level_next <= buf_level_next_raw when EXTENSION_C else 
                       buf_level_next_raw and "10";
 
-    process(clk, rst_n)
+    process(clk)
     begin
-        if ?? (not rst_n) then
-            buf_level_reg  <= "00";
-            cir_vld_reg        <= "00";
-            -- Mysterious reset value ensures address buses are zero in reset
-            -- (see definition of d_addr_offs in hazard3_decode)
-            buf_contents_reg <= std_logic_vector(to_unsigned(3, 3 * W_SLOT));
-        elsif rising_edge(clk) then
-            buf_level_reg    <= buf_level_next;
-            cir_vld_reg      <= buf_level_next and not ("0" & buf_level_next(1));
-            buf_contents_reg <= buf_shifted_plus_fetch;
+        if rising_edge(clk) then
+            if ?? rst then
+                buf_level_reg  <= "00";
+                cir_vld_reg        <= "00";
+                -- Mysterious reset value ensures address buses are zero in reset
+                -- (see definition of d_addr_offs in hazard3_decode)
+                buf_contents_reg <= std_logic_vector(to_unsigned(3, 3 * W_SLOT));
+            else
+                buf_level_reg    <= buf_level_next;
+                cir_vld_reg      <= buf_level_next and not ("0" & buf_level_next(1));
+                buf_contents_reg <= buf_shifted_plus_fetch;
+            end if;
         end if;
     end process;
 
@@ -819,13 +835,6 @@ begin
         -- 33 bits. The selector is zero-extended, so the leading 1'b1 never matches
         -- and rs2_fine is always rs2_coarse. Mirrored here for equivalence.
         v_rs2_fine := v_rs2_coarse;
-
-        if EXTENSION_E then
-            v_rs1_coarse(4) := '0';
-            v_rs2_coarse(4) := '0';
-            v_rs1_fine(4)   := '0';
-            v_rs2_fine(4)   := '0';
-        end if;
         
         -- Drive final signals
         predecode_rs1_coarse <= v_rs1_coarse;
@@ -892,10 +901,7 @@ begin
                 EXTENSION_M      => EXTENSION_M
             )
             port map (
-                clk                        => clk,
-                rst_n                      => rst_n,
-
-                instr_in                   => next_instr,
+                instr_in                  => next_instr,
 
                 instr_is_32bit             => decomp_instr_is_32bit,
                 instr_out                  => decomp_instr_out,
@@ -916,25 +922,27 @@ begin
         cir_is_uop_next <= '1' when decomp_is_uop = '1' and buf_level_next /= "00" else '0';
         cir_uop_nonfinal_next <= '1' when cir_is_uop_next = '1' and decomp_is_final_uop = '0' else '0';
 
-        process(clk, rst_n) begin
-            if rst_n = '0' then
-                cir_reg                  <= x"00000003";
-                cir_is_32bit_reg         <= '0';
-                cir_invalid_16bit_reg    <= '0';
-                cir_is_uop_reg           <= '0';
-                cir_uop_nonfinal_reg     <= '0';
-                cir_uop_no_pc_update_reg <= '0';
-                cir_uop_atomic_reg       <= '0';
-            elsif rising_edge(clk) then
-                if cir_clken = '1' then
-                    cir_reg                  <= decomp_instr_out or x"00000003";
-                    cir_is_32bit_reg         <= decomp_instr_is_32bit;
-                    cir_invalid_16bit_reg    <= decomp_invalid;
-                    -- |1'b0 equivalent boolean expressions
-                    cir_is_uop_reg           <= '0' and not uop_clear and cir_is_uop_next;
-                    cir_uop_nonfinal_reg     <= '0' and not uop_clear and cir_uop_nonfinal_next;
-                    cir_uop_no_pc_update_reg <= '0' and not uop_clear and decomp_uop_no_pc_update;
-                    cir_uop_atomic_reg       <= '0' and not uop_clear and decomp_uop_atomic;
+        process(clk) begin
+            if rising_edge(clk) then
+                if ?? rst then
+                    cir_reg                  <= x"00000003";
+                    cir_is_32bit_reg         <= '0';
+                    cir_invalid_16bit_reg    <= '0';
+                    cir_is_uop_reg           <= '0';
+                    cir_uop_nonfinal_reg     <= '0';
+                    cir_uop_no_pc_update_reg <= '0';
+                    cir_uop_atomic_reg       <= '0';
+                else
+                    if cir_clken = '1' then
+                        cir_reg                  <= decomp_instr_out or x"00000003";
+                        cir_is_32bit_reg         <= decomp_instr_is_32bit;
+                        cir_invalid_16bit_reg    <= decomp_invalid;
+                        -- |1'b0 equivalent boolean expressions
+                        cir_is_uop_reg           <= '0' and not uop_clear and cir_is_uop_next;
+                        cir_uop_nonfinal_reg     <= '0' and not uop_clear and cir_uop_nonfinal_next;
+                        cir_uop_no_pc_update_reg <= '0' and not uop_clear and decomp_uop_no_pc_update;
+                        cir_uop_atomic_reg       <= '0' and not uop_clear and decomp_uop_atomic;
+                    end if;
                 end if;
             end if;
         end process;

@@ -7,7 +7,7 @@ use work.hazard3_constants.all;
 entity hazard3_power_ctrl is
     port(
         clk_always_on   : in std_logic;
-        rst_n           : in std_logic;
+        rst             : in std_logic;
 
 	    -- 4-phase (Gray code) req/ack handshake for requesting and releasing
 	    -- power+clock enable on non-processor hardware, e.g. the bus fabric. This
@@ -65,61 +65,63 @@ begin
         
     -- Note: We assert our power up request during reset, and *assume* that the power
     -- up ackowledge is also high at reset. If this is a problem, extend the core reset.
-    process(clk_always_on, rst_n) begin
-        if ?? (not rst_n) then
-            state_reg <= S_AWAKE;
-            pwrup_req_reg <= '1';
-            clk_en_reg <= '1';
-            stall_release_reg <= '0';
-        elsif rising_edge(clk_always_on) then
-            stall_release_reg <= '0';
+    process(clk_always_on) begin
+        if rising_edge(clk_always_on) then
+            if ?? rst then
+                state_reg <= S_AWAKE;
+                pwrup_req_reg <= '1';
+                clk_en_reg <= '1';
+                stall_release_reg <= '0';
+            else
+                stall_release_reg <= '0';
 
-            case state_reg is
-                when S_AWAKE => 
-                    if ?? (sleeping_on_wfi or sleeping_on_block) then
-                        if ?? stall_release_reg then
-                            -- The last cycle of an ongoing which we have just released.
-                            -- Sit tight, this instruction will move down the pipeline at
-                            -- the end of this cycle. (There is an assertion that this
-                            -- doesn't happen twice.)
-                            state_reg <= S_AWAKE;
-                        elsif ?? active_wake_req then
-                            -- Skip deep sleep if it would immediately fall through.
-                            stall_release_reg <= '1';
-                        elsif ?? ((allow_power_down or allow_clkgate) and (sleeping_on_wfi or allow_sleep_on_block)) then
-                            if ?? frontend_pwrdown_ok then
-                                pwrup_req_reg <= not allow_power_down;
-                                clk_en_reg <= not allow_clkgate;
-                                state_reg <= S_ENTER_ASLEEP when ?? allow_power_down else S_ASLEEP;
+                case state_reg is
+                    when S_AWAKE => 
+                        if ?? (sleeping_on_wfi or sleeping_on_block) then
+                            if ?? stall_release_reg then
+                                -- The last cycle of an ongoing which we have just released.
+                                -- Sit tight, this instruction will move down the pipeline at
+                                -- the end of this cycle. (There is an assertion that this
+                                -- doesn't happen twice.)
+                                state_reg <= S_AWAKE;
+                            elsif ?? active_wake_req then
+                                -- Skip deep sleep if it would immediately fall through.
+                                stall_release_reg <= '1';
+                            elsif ?? ((allow_power_down or allow_clkgate) and (sleeping_on_wfi or allow_sleep_on_block)) then
+                                if ?? frontend_pwrdown_ok then
+                                    pwrup_req_reg <= not allow_power_down;
+                                    clk_en_reg <= not allow_clkgate;
+                                    state_reg <= S_ENTER_ASLEEP when ?? allow_power_down else S_ASLEEP;
+                                else
+                                    -- Stay awake until it is safe to power down (i.e. until
+                                    -- our instruction fetch goes quiet).
+                                    state_reg <= S_AWAKE;
+                                end if;
                             else
-                                -- Stay awake until it is safe to power down (i.e. until
-                                -- our instruction fetch goes quiet).
+                                -- No power state change. Just sit with the pipeline stalled.
                                 state_reg <= S_AWAKE;
                             end if;
-                        else
-                            -- No power state change. Just sit with the pipeline stalled.
-                            state_reg <= S_AWAKE;
                         end if;
-                    end if;
-                when S_ENTER_ASLEEP => 
-                    if ?? (not pwrup_ack) then
-                        state_reg <= S_ASLEEP;
-                    end if;
-                when S_ASLEEP => 
-                    if ?? active_wake_req then
-                        pwrup_req_reg <= '1';
-                        clk_en_reg <= '1';
-                        -- Still go through the enter state for non-power-down wakeup,
-                        -- in case the clock gate cell has a 1 cycle delay.
-                        state_reg <= S_ENTER_AWAKE;
-                    end if;
-                when S_ENTER_AWAKE => 
-                    if ?? (pwrup_ack or not allow_power_down) then
-                        state_reg <= S_AWAKE;
-                        stall_release_reg <= '1';
-                    end if;
-                when others => state_reg <= S_AWAKE;
-            end case;
+                    when S_ENTER_ASLEEP => 
+                        if ?? (not pwrup_ack) then
+                            state_reg <= S_ASLEEP;
+                        end if;
+                    when S_ASLEEP => 
+                        if ?? active_wake_req then
+                            pwrup_req_reg <= '1';
+                            clk_en_reg <= '1';
+                            -- Still go through the enter state for non-power-down wakeup,
+                            -- in case the clock gate cell has a 1 cycle delay.
+                            state_reg <= S_ENTER_AWAKE;
+                        end if;
+                    when S_ENTER_AWAKE => 
+                        if ?? (pwrup_ack or not allow_power_down) then
+                            state_reg <= S_AWAKE;
+                            stall_release_reg <= '1';
+                        end if;
+                    when others => state_reg <= S_AWAKE;
+                end case;
+            end if;
         end if;
     end process;
 
@@ -128,11 +130,13 @@ begin
     -- Unblock signal is sticky: a prior unblock with no block since will cause
     -- the next block to immediately fall through.
 
-    process(clk_always_on, rst_n) begin
-        if ?? (not rst_n) then
-            block_wakeup_req_reg <= '0';
-        elsif rising_edge(clk_always_on) then
-            block_wakeup_req_reg <= (block_wakeup_req_reg and not (sleeping_on_block and stall_release_reg)) or block_wakeup_req_pulse;
+    process(clk_always_on) begin
+        if rising_edge(clk_always_on) then
+            if ?? rst then
+                block_wakeup_req_reg <= '0';
+            else
+                block_wakeup_req_reg <= (block_wakeup_req_reg and not (sleeping_on_block and stall_release_reg)) or block_wakeup_req_pulse;
+            end if;
         end if;
     end process;
 

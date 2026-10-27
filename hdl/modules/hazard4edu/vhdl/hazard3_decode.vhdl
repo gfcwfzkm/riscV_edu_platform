@@ -5,21 +5,21 @@ use work.hazard3_constants.all;
 
 entity hazard3_decode is
     generic(
-        RESET_VECTOR     : unsigned(31 downto 0) := x"0000_0000";
-        EXTENSION_A      : boolean                       := true;
-        EXTENSION_C      : boolean                       := true;
-        EXTENSION_E      : boolean                       := true;
-        EXTENSION_M      : boolean                       := true;
-        CSR_M_MANDATORY  : boolean                       := true;
-        CSR_M_TRAP       : boolean                       := true;
-        CSR_COUNTER      : boolean                       := false;
-        U_MODE           : boolean                       := false;
-        DEBUG_SUPPORT    : boolean                       := false;
-        BRANCH_PREDICTOR : boolean                       := false
+        EXTENSION_A      : boolean := true;
+        EXTENSION_C      : boolean := true;
+        EXTENSION_M      : boolean := true;
+        CSR_M_MANDATORY  : boolean := true;
+        CSR_M_TRAP       : boolean := true;
+        CSR_COUNTER      : boolean := true;
+        U_MODE           : boolean := false;
+        DEBUG_SUPPORT    : boolean := true;
+        BRANCH_PREDICTOR : boolean := true
     );
     port(
         clk                     : in  std_logic;
-        rst_n                   : in  std_logic;
+        rst                     : in  std_logic;
+
+        reset_vector            : in  std_logic_vector(31 downto 0);
 
         fd_cir                  : in  std_logic_vector(31 downto 0);
         fd_cir_err              : in  std_logic_vector(1 downto 0);
@@ -210,12 +210,14 @@ begin
 
     cir_lock <= (cir_lock_prev_reg and not deassert_cir_lock) or assert_cir_lock;
     df_cir_flush_behind <= assert_cir_lock and not cir_lock_prev_reg;
-    process(clk, rst_n) is
+    process(clk) is
     begin
-        if rst_n = '0' then
-            cir_lock_prev_reg <= '0';
-        elsif rising_edge(clk) then
-            cir_lock_prev_reg <= cir_lock;
+        if rising_edge(clk) then
+            if ?? rst then
+                cir_lock_prev_reg <= '0';
+            else
+                cir_lock_prev_reg <= cir_lock;
+            end if;
         end if;
     end process;
     
@@ -239,29 +241,31 @@ begin
     hold_pc_on_cir_lock <= assert_cir_lock and not (fd_cir_is_uop and (not fd_cir_uop_no_pc_update) and (not x_stall));
     update_pc_on_cir_unlock <= cir_lock_prev_reg and finished_cir_lock and (not fd_cir_uop_no_pc_update);
 
-    process(clk, rst_n) is
+    process(clk) is
     begin
-        if rst_n = '0' then
-            pc_reg <= RESET_VECTOR;
-        elsif rising_edge(clk) then
-            if debug_dpc_wen = '1' then
-                pc_reg <= unsigned(debug_dpc_wdata);
-            elsif debug_mode = '1' then
-                pc_reg <= pc_reg;
-            elsif (f_jump_now = '1' and hold_pc_on_cir_lock = '0') or update_pc_on_cir_unlock = '1' then
-                pc_reg <= unsigned(f_jump_target);
-            elsif (f_jump_now = '0' and fd_cir_uop_nonfinal = '1' and fd_cir_uop_no_pc_update = '0' and x_stall = '0') then
-                -- End of previously stalled jr uop in cm.popret and cm.popretz:
-                -- safe to update PC as next instruction (addi sp) cannot trap.
-                pc_reg <= unsigned(f_jump_target);
-            elsif d_stall = '0' and cir_lock = '0' then
-                -- If this instruction is a predicted-taken branch (and has not
-                -- generated a mispredict recovery jump) then set the PC to the
-                -- prediction target instead of the sequenyially next PC
-                if predicted_branch = '1' then
-                    pc_reg <= unsigned(d_btb_target_addr);
-                else
-                    pc_reg <= pc_seq_next;
+        if rising_edge(clk) then
+            if ?? rst then
+                pc_reg <= unsigned(reset_vector);
+            else
+                if debug_dpc_wen = '1' then
+                    pc_reg <= unsigned(debug_dpc_wdata);
+                elsif debug_mode = '1' then
+                    pc_reg <= pc_reg;
+                elsif (f_jump_now = '1' and hold_pc_on_cir_lock = '0') or update_pc_on_cir_unlock = '1' then
+                    pc_reg <= unsigned(f_jump_target);
+                elsif (f_jump_now = '0' and fd_cir_uop_nonfinal = '1' and fd_cir_uop_no_pc_update = '0' and x_stall = '0') then
+                    -- End of previously stalled jr uop in cm.popret and cm.popretz:
+                    -- safe to update PC as next instruction (addi sp) cannot trap.
+                    pc_reg <= unsigned(f_jump_target);
+                elsif d_stall = '0' and cir_lock = '0' then
+                    -- If this instruction is a predicted-taken branch (and has not
+                    -- generated a mispredict recovery jump) then set the PC to the
+                    -- prediction target instead of the sequenyially next PC
+                    if predicted_branch = '1' then
+                        pc_reg <= unsigned(d_btb_target_addr);
+                    else
+                        pc_reg <= pc_seq_next;
+                    end if;
                 end if;
             end if;
         end if;
@@ -756,21 +760,16 @@ begin
             when others =>
                 d_invalid_32bit <= '1';
         end case?;
-        
-        if EXTENSION_E and (raw_rd(4) or raw_rs1(4) or raw_rs2(4)) = '1' then
-            d_invalid_32bit <= '1';
-        end if;
     end process;
 
     -- Then gate key signals based on CIR fullness, fetch faults etc. The split
     -- helps to avoid an event scheduling feedback loop that makes simulators
     -- unhappy and slow, particularly verilator
     process (all) is
-        constant REGADDR_MASK : std_logic_vector(REGISTER_ADDRESS_WIDTH_C - 1 downto 0) := (not to_std_logic(EXTENSION_E)) & x"F";
     begin
-        d_rs1 <= raw_rs1 and REGADDR_MASK;
-        d_rs2 <= raw_rs2 and REGADDR_MASK;
-        d_rd <= raw_rd and REGADDR_MASK;
+        d_rs1 <= raw_rs1;
+        d_rs2 <= raw_rs2;
+        d_rd <= raw_rd;
         d_imm <= raw_imm;
         d_alusrc_a <= raw_alusrc_a;
         d_alusrc_b <= raw_alusrc_b;

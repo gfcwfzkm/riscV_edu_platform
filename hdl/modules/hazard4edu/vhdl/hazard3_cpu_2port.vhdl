@@ -9,16 +9,9 @@ use work.hazard3_constants.all;
 -- to a pair of AHB5 master ports.
 entity hazard3_cpu_2port is
     generic(
-        -- Address of first instruction executed
-        RESET_VECTOR        : unsigned(31 downto 0)                                    := x"0000_0000";
-        -- Initial value of trap vector base. Bits clear in MTVEC_WRITE_MASK_C will never change
-        -- from this initial value. Bit 0 selects the vectoring mode (0: unvectored, 1: vectored).
-        MTVEC_INIT          : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0)           := x"0000_0000";
-
         -- Standard RISC-V ISA support
         EXTENSION_A         : boolean                                                  := TRUE;  -- Atomic read/modify/write instructions
         EXTENSION_C         : boolean                                                  := TRUE;  -- Compressed (variable-width) instructions
-        EXTENSION_E         : boolean                                                  := TRUE;  -- RV32E base: 15 instead of 31 integer registers
         EXTENSION_M         : boolean                                                  := TRUE;  -- Hardware multiply/divide/modulo instructions
 
         -- Custom RISC-V extensions
@@ -31,7 +24,7 @@ entity hazard3_cpu_2port is
         -- Standard CSR support
         CSR_M_MANDATORY     : boolean                                                  := TRUE;  -- Bare minimum CSR support e.g. misa
         CSR_M_TRAP          : boolean                                                  := TRUE;  -- M-mode trap-handling CSRs and trap support
-        CSR_COUNTER         : boolean                                                  := FALSE; -- Performance counters and Zicntr CSRs
+        CSR_COUNTER         : boolean                                                  := TRUE;  -- Performance counters and Zicntr CSRs
         -- Support the U (user) execution mode. Requires: CSR_M_TRAP
         U_MODE              : boolean                                                  := FALSE;
 
@@ -52,13 +45,13 @@ entity hazard3_cpu_2port is
 
         -- Support for run/halt and instruction injection from an external Debug Module, support
         -- for Debug Mode, and Debug Mode CSRs. Requires: CSR_M_MANDATORY, CSR_M_TRAP
-        DEBUG_SUPPORT       : boolean                                                  := FALSE;
+        DEBUG_SUPPORT       : boolean                                                  := TRUE;
         -- Number of triggers which support type=2 execute=1. Requires: DEBUG_SUPPORT
-        BREAKPOINT_TRIGGERS : natural                                                  := 0;
+        BREAKPOINT_TRIGGERS : natural                                                  := 8;
 
         -- Number of external IRQs. Note that if EXTENSION_XH3IRQ (IRQ Controller) is disabled, then
         -- multiple external interrupts are OR'd into mip.meip
-        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C                   := 1;
+        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C                   := 8;
         -- Number of priority bits implemented for each interrupt in meipra
         IRQ_PRIORITY_BITS   : integer range 0 to 4                                     := 0;
         -- Disable the input registers on the external interrupts, IRQ-by-IRQ
@@ -68,25 +61,29 @@ entity hazard3_cpu_2port is
         -- Remove all forwarding paths except X->X, to save area
         REDUCED_BYPASS      : boolean                                                  := FALSE;
         -- Bits per clock for multiply/divide circuit, if present. Must be a power of 2.
-        MULDIV_UNROLL       : positive                                                 := 1;
+        MULDIV_UNROLL       : positive                                                 := 2;
         -- Single-cycle multiply circuit for MUL instructions, retiring to stage 3
-        MUL_FAST            : boolean                                                  := FALSE;
+        MUL_FAST            : boolean                                                  := TRUE;
         -- Retire fast multiply results to stage 2 instead of stage 3. Requires: MUL_FAST
-        MUL_FASTER          : boolean                                                  := FALSE;
+        MUL_FASTER          : boolean                                                  := TRUE;
         -- Extend the fast multiply circuit to also cover MULH*. Requires: MUL_FAST
-        MULH_FAST           : boolean                                                  := FALSE;
+        MULH_FAST           : boolean                                                  := TRUE;
         -- Separate comparator for branch comparisons, rather than using the ALU
         FAST_BRANCHCMP      : boolean                                                  := TRUE;
-        -- Support reset of the general purpose registers (disable for block-RAM inference)
-        RESET_REGFILE       : boolean                                                  := FALSE;
         -- Single-entry BTB, allocated on a taken backward branch
-        BRANCH_PREDICTOR    : boolean                                                  := FALSE
+        BRANCH_PREDICTOR    : boolean                                                  := TRUE
     );
     port(
         -- Global signals
         clk           : in std_logic;
         clk_always_on : in std_logic;
-        rst_n         : in std_logic;
+        rst           : in std_logic;
+
+        -- Address of first instruction executed
+        reset_vector  : in std_logic_vector(31 downto 0);
+        -- Initial value of trap vector base. Bits clear in MTVEC_WRITE_MASK_C will never change
+        -- from this initial value. Bit 0 selects the vectoring mode (0: unvectored, 1: vectored).
+        mtvec_init    : in std_logic_vector(31 downto 0);
 
         -- Power control signals
         pwrup_req   : out std_logic;
@@ -225,11 +222,8 @@ begin
 
     core : entity work.hazard3_core
         generic map(
-            RESET_VECTOR        => RESET_VECTOR,
-            MTVEC_INIT          => MTVEC_INIT,
             EXTENSION_A         => EXTENSION_A,
             EXTENSION_C         => EXTENSION_C,
-            EXTENSION_E         => EXTENSION_E,
             EXTENSION_M         => EXTENSION_M,
             EXTENSION_XH3IRQ    => EXTENSION_XH3IRQ,
             EXTENSION_XH3PMPM   => EXTENSION_XH3PMPM,
@@ -255,13 +249,14 @@ begin
             MUL_FASTER          => MUL_FASTER,
             MULH_FAST           => MULH_FAST,
             FAST_BRANCHCMP      => FAST_BRANCHCMP,
-            RESET_REGFILE       => RESET_REGFILE,
             BRANCH_PREDICTOR    => BRANCH_PREDICTOR
         )
         port map(
             clk                        => clk,
             clk_always_on              => clk_always_on,
-            rst_n                      => rst_n,
+            rst                        => rst,
+            reset_vector               => reset_vector,
+            mtvec_init                 => mtvec_init,
 
             pwrup_req                  => pwrup_req,
             pwrup_ack                  => pwrup_ack,
@@ -325,11 +320,13 @@ begin
     i_htrans <= HTRANS_NSEQ when ?? core_aph_req_i else HTRANS_IDLE;
     i_hsize <= core_hsize_i;
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            dphase_active_i_reg <= '0';
-        elsif rising_edge(clk) then
-            dphase_active_i_reg <= core_aph_req_i when ?? i_hready else dphase_active_i_reg;
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                dphase_active_i_reg <= '0';
+            else
+                dphase_active_i_reg <= core_aph_req_i when ?? i_hready else dphase_active_i_reg;
+            end if;
         end if;
     end process;
 
@@ -361,13 +358,15 @@ begin
     -- clk_always_on is used because SBA may access the bus through this arbiter
     -- whilst the core is asleep (same is not true for I-side interface)
 
-    process(clk_always_on, rst_n) begin
-        if ?? (not rst_n) then
-            bus_hold_aph_reg <= '0';
-            bus_gnt_ds_prev_reg <= (others => '0');
-        elsif rising_edge(clk_always_on) then
-            bus_hold_aph_reg <= d_htrans(1) and not d_hready and not d_hresp;
-            bus_gnt_ds_prev_reg <= bus_gnt_d & bus_gnt_s;
+    process(clk_always_on) begin
+        if rising_edge(clk_always_on) then
+            if ?? rst then
+                bus_hold_aph_reg <= '0';
+                bus_gnt_ds_prev_reg <= (others => '0');
+            else
+                bus_hold_aph_reg <= d_htrans(1) and not d_hready and not d_hresp;
+                bus_gnt_ds_prev_reg <= bus_gnt_d & bus_gnt_s;
+            end if;
         end if;
     end process;
 
@@ -381,12 +380,12 @@ begin
                  '1'                    when ?? (dbg_sbus_vld and not bus_active_dph_s_reg) else
                  '0';
 
-    process(clk_always_on, rst_n) begin
-        if ?? (not rst_n) then
-            bus_active_dph_d_reg <= '0';
-            bus_active_dph_s_reg <= '0';
-        elsif rising_edge(clk_always_on) then
-            if ?? d_hready then
+    process(clk_always_on) begin
+        if rising_edge(clk_always_on) then
+            if ?? rst then
+                bus_active_dph_d_reg <= '0';
+                bus_active_dph_s_reg <= '0';
+            elsif ?? d_hready then
                 bus_active_dph_d_reg <= bus_gnt_d;
                 bus_active_dph_s_reg <= bus_gnt_s;
             end if;

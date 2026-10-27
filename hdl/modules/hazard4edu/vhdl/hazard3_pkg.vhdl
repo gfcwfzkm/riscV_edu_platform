@@ -850,8 +850,6 @@ package hazard3_constants is
 
     function clog2(value : integer) return natural;
 
-    function num_of_regs(e_extension : boolean) return positive;
-    
     type std_logic_array_t is array (natural range <>) of std_logic_vector;
 
 end package hazard3_constants;
@@ -874,16 +872,5 @@ package body hazard3_constants is
         return natural(ceil(log2(real(value))));
     end function clog2;
 
-    function num_of_regs(e_extension : boolean)
-        return positive is
-    begin
-        if e_extension then
-            return 16;
-        else
-            return 32;
-        end if;
-    end function num_of_regs;
-    
-    
 end package body hazard3_constants;
 

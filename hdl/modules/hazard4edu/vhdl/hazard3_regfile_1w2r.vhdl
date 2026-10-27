@@ -5,13 +5,8 @@ use ieee.numeric_std.all;
 use work.hazard3_constants.all;
 
 entity hazard3_regfile_1w2r is
-    generic (
-        EXTENSION_E   : boolean := true;
-        RESET_REGFILE : boolean := false
-    );
     port (
         clk    : in std_logic;
-        rst_n  : in std_logic;
 
         raddr1 : in  std_logic_vector(REGISTER_ADDRESS_WIDTH_C - 1 downto 0);
         rdata1 : out std_logic_vector(DATA_WIDTH_C - 1 downto 0);
@@ -27,48 +22,45 @@ end entity hazard3_regfile_1w2r;
 
 architecture rtl of hazard3_regfile_1w2r is
 
-    constant NUMBER_OF_REGISTERS   : positive := num_of_regs(EXTENSION_E);
-    constant REGISTER_ADDRESS_MASK : std_logic_vector(REGISTER_ADDRESS_WIDTH_C - 1 downto 0) := not to_std_logic(EXTENSION_E) & x"F";
-
-    type mem_t is array (0 to NUMBER_OF_REGISTERS - 1) of
-        std_logic_vector(DATA_WIDTH_C - 1 downto 0);
-    signal register_memory : mem_t;
-    signal raddr1_masked   : std_logic_vector(4 downto 0);
-    signal raddr2_masked   : std_logic_vector(4 downto 0);
-    signal waddr_masked    : std_logic_vector(4 downto 0);
+    signal reg_a_data : std_logic_vector(DATA_WIDTH_C - 1 downto 0);
+    signal reg_b_data : std_logic_vector(DATA_WIDTH_C - 1 downto 0);
 
 begin
-    raddr1_masked <= raddr1 and REGISTER_ADDRESS_MASK;
-    raddr2_masked <= raddr2 and REGISTER_ADDRESS_MASK;
-    waddr_masked  <= waddr and REGISTER_ADDRESS_MASK;
+    -- One LUT RAM per read port, both written identically
+    DATA_A_RAM : entity work.sramLutRam
+        generic map (
+            nrOfAddressBits => REGISTER_ADDRESS_WIDTH_C,
+            nrOfDataBits    => DATA_WIDTH_C
+        )
+        port map (
+            clock        => clk,
+            writeEnable  => wen,
+            writeAddress => unsigned(waddr),
+            readAddress  => unsigned(raddr1),
+            writeData    => wdata,
+            readData     => reg_a_data
+        );
 
-    REGFILE_WITH_RESET : if RESET_REGFILE generate
-        process(clk, rst_n)
-        begin
-            if rst_n = '0' then
-                register_memory <= (others => (others => '0'));
-                rdata1 <= (others => '0');
-                rdata2 <= (others => '0');
-            elsif rising_edge(clk) then
-                if wen = '1' then
-                    register_memory(to_integer(unsigned(waddr_masked))) <= wdata;
-                end if;
-                rdata1 <= register_memory(to_integer(unsigned(raddr1_masked)));
-                rdata2 <= register_memory(to_integer(unsigned(raddr2_masked)));
-            end if;
-        end process;
-    end generate REGFILE_WITH_RESET;
+    DATA_B_RAM : entity work.sramLutRam
+        generic map (
+            nrOfAddressBits => REGISTER_ADDRESS_WIDTH_C,
+            nrOfDataBits    => DATA_WIDTH_C
+        )
+        port map (
+            clock        => clk,
+            writeEnable  => wen,
+            writeAddress => unsigned(waddr),
+            readAddress  => unsigned(raddr2),
+            writeData    => wdata,
+            readData     => reg_b_data
+        );
 
-    REGFILE_WITHOUT_RESET : if not RESET_REGFILE generate
-        process(clk)
-        begin
-            if rising_edge(clk) then
-                if wen = '1' then
-                    register_memory(to_integer(unsigned(waddr_masked))) <= wdata;
-                end if;
-                rdata1 <= register_memory(to_integer(unsigned(raddr1_masked)));
-                rdata2 <= register_memory(to_integer(unsigned(raddr2_masked)));
-            end if;
-        end process;
-    end generate REGFILE_WITHOUT_RESET;
+    -- Register x0 always reads as zero
+    READ_REGS : process(clk)
+    begin
+        if rising_edge(clk) then
+            rdata1 <= (others => '0') when unsigned(raddr1) = 0 else reg_a_data;
+            rdata2 <= (others => '0') when unsigned(raddr2) = 0 else reg_b_data;
+        end if;
+    end process READ_REGS;
 end architecture rtl;

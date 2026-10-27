@@ -9,29 +9,28 @@ entity hazard3_csr is
     generic (
         -- Number of external IRQs. Note that if EXTENSION_XH3IRQ (IRQ Controller) is disabled, then
         -- multiple external interrupts are OR'd into mip.meip
-        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C         := 1;
+        NUMBER_OF_IRQs      : integer range 1 to MAX_NUMBER_OF_IRQ_C         := 8;
         IRQ_PRIORITY_BITS   : integer range 0 to 4                           := 0;
         IRQ_INPUTREG_BYPASS : boolean_vector(NUMBER_OF_IRQs - 1 downto 0)    := (others => FALSE);
-        MTVEC_INIT          : std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0) := x"0000_0000";
         CSR_M_MANDATORY     : boolean                                        := TRUE;
         CSR_M_TRAP          : boolean                                        := TRUE;
-        CSR_COUNTER         : boolean                                        := FALSE;
+        CSR_COUNTER         : boolean                                        := TRUE;
         PMP_REGIONS         : natural                                        := 0;
         EXTENSION_A         : boolean                                        := TRUE;
         EXTENSION_C         : boolean                                        := TRUE;
-        EXTENSION_E         : boolean                                        := TRUE;
         EXTENSION_M         : boolean                                        := TRUE;
-        MUL_FAST            : boolean                                        := FALSE;
-        MULH_FAST           : boolean                                        := FALSE;
+        MUL_FAST            : boolean                                        := TRUE;
+        MULH_FAST           : boolean                                        := TRUE;
         EXTENSION_XH3PMPM   : boolean                                        := TRUE;
         EXTENSION_XH3IRQ    : boolean                                        := TRUE;
         U_MODE              : boolean                                        := FALSE;
-        DEBUG_SUPPORT       : boolean                                        := FALSE
+        DEBUG_SUPPORT       : boolean                                        := TRUE
     );
     port (
         clk             : in std_logic;
         clk_always_on   : in std_logic;
-        rst_n           : in std_logic;
+        rst             : in std_logic;
+        mtvec_init      : in std_logic_vector(31 downto 0);
 
         -- Debug Signalling
         debug_mode : out std_logic;
@@ -162,9 +161,9 @@ architecture rtl of hazard3_csr is
         7d"0"   & -- T..N, no
         to_std_logic(EXTENSION_M) &
         3d"0"   & -- L..J, no
-        to_std_logic(not EXTENSION_E) &
+        '1'     & -- RVI base ISA
         3d"0"   & -- H, G, F, no
-        to_std_logic(EXTENSION_E) &
+        '0'     & -- RVE base ISA
         1d"0"   & -- D, no
         to_std_logic(EXTENSION_C) &
         1d"0"   & -- B, no
@@ -173,13 +172,12 @@ architecture rtl of hazard3_csr is
 
     constant EXTENSION_ZMMUL : boolean :=  EXTENSION_M;
     constant EXTENSION_ZKT   : boolean := not (EXTENSION_M and not (MUL_FAST and MULH_FAST));
-    constant EXTENSION_I     : boolean := not EXTENSION_E;
+    constant EXTENSION_I     : boolean := TRUE;
 
     constant H3MISA_STANDARD_EXTENSION : std_logic_array_t(0 to 3)(DATA_WIDTH_C - 1 downto 0) := (
         0 => (
             12 => to_std_logic(EXTENSION_M),
             8 => to_std_logic(EXTENSION_I),
-            4 => to_std_logic(EXTENSION_E),
             2 => to_std_logic(EXTENSION_C),
             0 => to_std_logic(EXTENSION_A),
             others => '0'),
@@ -317,12 +315,14 @@ begin
                     rdata or      wdata when wtype = CSR_WTYPE.S else
                     wdata;
     
-    process(clk, rst_n) is
+    process(clk) is
     begin
-        if ?? (not rst_n) then
-            debug_mode_reg <= '0';
-        elsif rising_edge(clk) then
-            debug_mode_reg <= (debug_mode_reg and not exit_debug_mode) or enter_debug_mode;
+        if rising_edge(clk) then
+            if ?? rst then
+                debug_mode_reg <= '0';
+            else
+                debug_mode_reg <= (debug_mode_reg and not exit_debug_mode) or enter_debug_mode;
+            end if;
         end if;
     end process;
 
@@ -348,16 +348,9 @@ begin
     --  y; xPIE is set to 1; and xPP is set to the least-privileged supported
     --  mode (U if U-mode is implemented, else M). If xPP=M, xRET also sets
     --  MPRV=0."
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            m_mode_reg <= '1';
-            mstatus_mpie_reg <= '0';
-            mstatus_mie_reg <= '0';
-            mstatus_mpp_reg <= '1';
-            mstatus_mprv_reg <= '0';
-            mstatus_tw_reg <= '0';
-        elsif rising_edge(clk) then
-            if not CSR_M_TRAP then
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 m_mode_reg <= '1';
                 mstatus_mpie_reg <= '0';
                 mstatus_mie_reg <= '0';
@@ -365,41 +358,50 @@ begin
                 mstatus_mprv_reg <= '0';
                 mstatus_tw_reg <= '0';
             else
-                if ?? trapreg_update_exit then
-                    mstatus_mpie_reg <= '1';
-                    mstatus_mie_reg <= mstatus_mpie_reg;
-                    if U_MODE then
-                        m_mode_reg <= mstatus_mpp_reg;
-                        mstatus_mpp_reg <= '0';
-                        if ?? (not mstatus_mpp_reg) then
-                            mstatus_mprv_reg <= '0';
-                        end if;
-                    end if;
-                elsif ?? trapreg_update_enter then
-                    mstatus_mpie_reg <= mstatus_mie_reg;
-                    mstatus_mie_reg <= '0';
-                    if U_MODE then
-                        m_mode_reg <= '1';
-                        mstatus_mpp_reg <= m_mode_reg;
-                    end if;
-                elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MSTATUS then
-                    mstatus_mpie_reg <= wdata_update(7);
-                    mstatus_mie_reg <= wdata_update(3);
-                    mstatus_mprv_reg <= wdata_update(17);
-                    -- Not only the MSB of MPP is implemented. It reads back as 11 or 00.
-                    mstatus_mpp_reg <= wdata_update(12) or not to_std_logic(U_MODE);
-                    mstatus_tw_reg <= wdata_update(21) and to_std_logic(U_MODE);
-                elsif wen_raw = '1' and debug_mode_reg = '1' and addr = CSR_ADDRESSES.D_MODE.DCSR and U_MODE and DEBUG_SUPPORT then
-                    -- Debugger can change/observe core state directly through
-                    -- DCSR.PRV (this does not affect debugger operation, as all
-                    -- operations have effective level of M-mode while the core
-                    -- is halted for debug.)
-                    m_mode_reg <= wdata_update(1);
-                end if;
-                if not U_MODE then
-                    -- Explicitly tie-off to constant
+                if not CSR_M_TRAP then
                     m_mode_reg <= '1';
+                    mstatus_mpie_reg <= '0';
+                    mstatus_mie_reg <= '0';
                     mstatus_mpp_reg <= '1';
+                    mstatus_mprv_reg <= '0';
+                    mstatus_tw_reg <= '0';
+                else
+                    if ?? trapreg_update_exit then
+                        mstatus_mpie_reg <= '1';
+                        mstatus_mie_reg <= mstatus_mpie_reg;
+                        if U_MODE then
+                            m_mode_reg <= mstatus_mpp_reg;
+                            mstatus_mpp_reg <= '0';
+                            if ?? (not mstatus_mpp_reg) then
+                                mstatus_mprv_reg <= '0';
+                            end if;
+                        end if;
+                    elsif ?? trapreg_update_enter then
+                        mstatus_mpie_reg <= mstatus_mie_reg;
+                        mstatus_mie_reg <= '0';
+                        if U_MODE then
+                            m_mode_reg <= '1';
+                            mstatus_mpp_reg <= m_mode_reg;
+                        end if;
+                    elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MSTATUS then
+                        mstatus_mpie_reg <= wdata_update(7);
+                        mstatus_mie_reg <= wdata_update(3);
+                        mstatus_mprv_reg <= wdata_update(17);
+                        -- Not only the MSB of MPP is implemented. It reads back as 11 or 00.
+                        mstatus_mpp_reg <= wdata_update(12) or not to_std_logic(U_MODE);
+                        mstatus_tw_reg <= wdata_update(21) and to_std_logic(U_MODE);
+                    elsif wen_raw = '1' and debug_mode_reg = '1' and addr = CSR_ADDRESSES.D_MODE.DCSR and U_MODE and DEBUG_SUPPORT then
+                        -- Debugger can change/observe core state directly through
+                        -- DCSR.PRV (this does not affect debugger operation, as all
+                        -- operations have effective level of M-mode while the core
+                        -- is halted for debug.)
+                        m_mode_reg <= wdata_update(1);
+                    end if;
+                    if not U_MODE then
+                        -- Explicitly tie-off to constant
+                        m_mode_reg <= '1';
+                        mstatus_mpp_reg <= '1';
+                    end if;
                 end if;
             end if;
         end if;
@@ -411,15 +413,17 @@ begin
     -- immediately wake them.
     trap_wfi <= mstatus_tw_reg and not (debug_mode_reg or m_mode_reg);
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mscratch_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if not CSR_M_TRAP then
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 mscratch_reg <= (others => '0');
             else
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MSCRATCH then
-                    mscratch_reg <= wdata_update;
+                if not CSR_M_TRAP then
+                    mscratch_reg <= (others => '0');
+                else
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MSCRATCH then
+                        mscratch_reg <= wdata_update;
+                    end if;
                 end if;
             end if;
         end if;
@@ -429,55 +433,61 @@ begin
     mtvec <= mtvec_reg and x"FFFF_FFFC";
     irq_vector_enable <= mtvec_reg(0);
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mtvec_reg <= MTVEC_INIT;
-        elsif rising_edge(clk) then
-            if not CSR_M_TRAP then
-                mtvec_reg <= MTVEC_INIT;
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                mtvec_reg <= mtvec_init;
             else
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MTVEC then
-                    mtvec_reg <= (wdata_update and MTVEC_WRITE_MASK_C) or (mtvec_reg and not MTVEC_WRITE_MASK_C);
+                if not CSR_M_TRAP then
+                    mtvec_reg <= mtvec_init;
+                else
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MTVEC then
+                        mtvec_reg <= (wdata_update and MTVEC_WRITE_MASK_C) or (mtvec_reg and not MTVEC_WRITE_MASK_C);
+                    end if;
                 end if;
             end if;
         end if;
     end process;
 
-    process(clk, rst_n) is
+    process(clk) is
         constant MEPC_MASK : std_logic_vector(mepc_reg'range) := (ADDRESS_WIDTH_C - 1 downto 2 => '1') & to_std_logic(EXTENSION_C) & '0';
     begin
-        if ?? (not rst_n) then
-            mepc_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if not CSR_M_TRAP then
+        if rising_edge(clk) then
+            if ?? rst then
                 mepc_reg <= (others => '0');
             else
-                if ?? trapreg_update_enter then
-                    mepc_reg <= mepc_in and MEPC_MASK;
-                elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MEPC then
-                    mepc_reg <= wdata_update and MEPC_MASK;
+                if not CSR_M_TRAP then
+                    mepc_reg <= (others => '0');
+                else
+                    if ?? trapreg_update_enter then
+                        mepc_reg <= mepc_in and MEPC_MASK;
+                    elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MEPC then
+                        mepc_reg <= wdata_update and MEPC_MASK;
+                    end if;
                 end if;
             end if;
         end if;
     end process;
 
-    process(clk, rst_n) is
+    process(clk) is
         constant MIE_WMASK : std_logic_vector(mie_reg'range) := x"0000_0888"; -- meie, mtie, msie
     begin
-        if ?? (not rst_n) then
-            mie_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if not CSR_M_TRAP then
+        if rising_edge(clk) then
+            if ?? rst then
                 mie_reg <= (others => '0');
             else
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MIE then
-                    mie_reg <= (wdata_update and MIE_WMASK) or (mie_reg and not MIE_WMASK);
-                elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEICONTEXT then
-                    -- meicontext.clearts/mtiesave/msiesave can be used to clear and
-			        -- save standard timer and soft IRQ enables, simultaneously with
-			        -- saving external interrupt context.
-                    mie_reg(7) <= (mie_reg(7) or wdata_update(3)) and not meicontext_clearts;
-                    mie_reg(3) <= (mie_reg(3) or wdata_update(2)) and not meicontext_clearts;
+                if not CSR_M_TRAP then
+                    mie_reg <= (others => '0');
+                else
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MIE then
+                        mie_reg <= (wdata_update and MIE_WMASK) or (mie_reg and not MIE_WMASK);
+                    elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.CUSTOM_M_MODE.MEICONTEXT then
+                        -- meicontext.clearts/mtiesave/msiesave can be used to clear and
+    			        -- save standard timer and soft IRQ enables, simultaneously with
+    			        -- saving external interrupt context.
+                        mie_reg(7) <= (mie_reg(7) or wdata_update(3)) and not meicontext_clearts;
+                        mie_reg(3) <= (mie_reg(3) or wdata_update(2)) and not meicontext_clearts;
+                    end if;
                 end if;
             end if;
         end if;
@@ -488,21 +498,23 @@ begin
     -- enough to support causes that will be set by hardware, in our case 4 bits.
     -- (Note this is different to scause which always has a hard minimum of 5
     -- bits.)
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mcause_irq_reg <= '0';
-            mcause_code_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if not CSR_M_TRAP then
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 mcause_irq_reg <= '0';
                 mcause_code_reg <= (others => '0');
             else
-                if ?? trapreg_update_enter then
-                    mcause_irq_reg <= mcause_irq_next;
-                    mcause_code_reg <= mcause_code_next;
-                elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MCAUSE then
-                    mcause_irq_reg <= wdata_update(31);
-                    mcause_code_reg <= wdata_update(3 downto 0);
+                if not CSR_M_TRAP then
+                    mcause_irq_reg <= '0';
+                    mcause_code_reg <= (others => '0');
+                else
+                    if ?? trapreg_update_enter then
+                        mcause_irq_reg <= mcause_irq_next;
+                        mcause_code_reg <= mcause_code_next;
+                    elsif wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_HANDLING.MCAUSE then
+                        mcause_irq_reg <= wdata_update(31);
+                        mcause_code_reg <= wdata_update(3 downto 0);
+                    end if;
                 end if;
             end if;
         end if;
@@ -537,7 +549,7 @@ begin
             port map(
                 clk                  => clk,
                 clk_always_on        => clk_always_on,
-                rst_n                => rst_n,
+                rst                  => rst,
                 addr                 => addr,
                 wtype                => wtype,
                 wen_m_mode           => wen_m_mode,
@@ -556,11 +568,13 @@ begin
             );
     else generate
 
-        process(clk_always_on, rst_n) begin
-            if ?? (not rst_n) then
-                external_irq_pending_reg <= '0';
-            elsif rising_edge(clk_always_on) then
-                external_irq_pending_reg <= or irq;
+        process(clk_always_on) begin
+            if rising_edge(clk_always_on) then
+                if ?? rst then
+                    external_irq_pending_reg <= '0';
+                else
+                    external_irq_pending_reg <= or irq;
+                end if;
             end if;
         end process;
 
@@ -589,33 +603,35 @@ begin
     mcycle_stopped <= mcountinhibit_cy_reg or debug_mode_reg or (wen_m_mode and to_std_logic(mcycleh_or_mcycle));
     minstret_stopped <= mcountinhibit_ir_reg or debug_mode_reg or (wen_m_mode and to_std_logic(minstreth_or_minstret));
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mcycle_reg <= (others => '0');
-            mcycleh_reg <= (others => '0');
-            minstret_reg <= (others => '0');
-            minstreth_reg <= (others => '0');
-            mcountinhibit_cy_reg <= '1';
-            mcountinhibit_ir_reg <= '1';
-        elsif rising_edge(clk) then
-            if CSR_COUNTER then
-                if ?? (not mcycle_stopped) then
-                    (mcycleh_reg, mcycle_reg) <= (mcycleh_reg & mcycle_reg) + 1;
-                end if;
-                if ?? (instr_ret and not minstret_stopped) then
-                    (minstreth_reg, minstret_reg) <= (minstreth_reg & minstret_reg) + 1;
-                end if;
-                if ?? wen_m_mode then
-                    case to_integer(addr) is
-                        when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCYCLEH   => mcycleh_reg <= unsigned(wdata_update);
-                        when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCYCLE    => mcycle_reg <= unsigned(wdata_update);
-                        when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MINSTRETH => minstreth_reg <= unsigned(wdata_update);
-                        when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MINSTRET  => minstret_reg <= unsigned(wdata_update);
-                        when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCOUNTINHIBIT => 
-                            mcountinhibit_cy_reg <= wdata_update(0);
-                            mcountinhibit_ir_reg <= wdata_update(2);
-                        when others => null;
-                    end case;   
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                mcycle_reg <= (others => '0');
+                mcycleh_reg <= (others => '0');
+                minstret_reg <= (others => '0');
+                minstreth_reg <= (others => '0');
+                mcountinhibit_cy_reg <= '1';
+                mcountinhibit_ir_reg <= '1';
+            else
+                if CSR_COUNTER then
+                    if ?? (not mcycle_stopped) then
+                        (mcycleh_reg, mcycle_reg) <= (mcycleh_reg & mcycle_reg) + 1;
+                    end if;
+                    if ?? (instr_ret and not minstret_stopped) then
+                        (minstreth_reg, minstret_reg) <= (minstreth_reg & minstret_reg) + 1;
+                    end if;
+                    if ?? wen_m_mode then
+                        case to_integer(addr) is
+                            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCYCLEH   => mcycleh_reg <= unsigned(wdata_update);
+                            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCYCLE    => mcycle_reg <= unsigned(wdata_update);
+                            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MINSTRETH => minstreth_reg <= unsigned(wdata_update);
+                            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MINSTRET  => minstret_reg <= unsigned(wdata_update);
+                            when CSR_ADDRESSES.PERFORMANCE_COUNTERS.MCOUNTINHIBIT => 
+                                mcountinhibit_cy_reg <= wdata_update(0);
+                                mcountinhibit_ir_reg <= wdata_update(2);
+                            when others => null;
+                        end case;   
+                    end if;
                 end if;
             end if;
         end if;
@@ -625,18 +641,20 @@ begin
     -- unimplemented. The tm bit provides a standard way to configure whether
     -- M-mode software permits the trapped access to reach the timer registers.
     -- (This is in fact required by the RVM-CSI platform spec.)
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            mcounteren_cy_reg <= '0';
-            mcounteren_ir_reg <= '0';
-            mcounteren_tm_reg <= '0';
-        elsif rising_edge(clk) then
-            -- Written (with zeros) even without counters or U-mode: a register that is only
-            -- assigned in the reset branch would be inferred as a latch by GHDL
-            if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN then
-                mcounteren_cy_reg <= wdata_update(0) and to_std_logic(CSR_COUNTER and U_MODE);
-                mcounteren_tm_reg <= wdata_update(1) and to_std_logic(CSR_COUNTER and U_MODE);
-                mcounteren_ir_reg <= wdata_update(2) and to_std_logic(CSR_COUNTER and U_MODE);
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
+                mcounteren_cy_reg <= '0';
+                mcounteren_ir_reg <= '0';
+                mcounteren_tm_reg <= '0';
+            else
+                -- Written (with zeros) even without counters or U-mode: a register that is only
+                -- assigned in the reset branch would be inferred as a latch by GHDL
+                if wen_m_mode = '1' and addr = CSR_ADDRESSES.MACHINE_TRAP_SETUP.MCOUNTEREN then
+                    mcounteren_cy_reg <= wdata_update(0) and to_std_logic(CSR_COUNTER and U_MODE);
+                    mcounteren_tm_reg <= wdata_update(1) and to_std_logic(CSR_COUNTER and U_MODE);
+                    mcounteren_ir_reg <= wdata_update(2) and to_std_logic(CSR_COUNTER and U_MODE);
+                end if;
             end if;
         end if;
     end process;
@@ -651,27 +669,29 @@ begin
     -- The following are read-only volatile:
     -- - cause (bits 8:6)
     -- All others are hardwired constants.
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            dcsr_ebreakm_reg <= '0';
-            dcsr_ebreaku_reg <= '0';
-            dcsr_step_reg <= '0';
-            dcsr_cause_reg <= (others => '0');
-        elsif rising_edge(clk) then
-            if DEBUG_SUPPORT then
-                if debug_mode_reg = '1' and wen_raw = '1' and addr = CSR_ADDRESSES.D_MODE.DCSR then
-                    dcsr_ebreakm_reg <= wdata_update(15);
-                    dcsr_ebreaku_reg <= wdata_update(12) when U_MODE else '0';
-                    dcsr_step_reg <= wdata_update(2);
-                end if;
-                if ?? enter_debug_mode then
-                    dcsr_cause_reg <= dcause_next;
-                end if;
-            else
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 dcsr_ebreakm_reg <= '0';
                 dcsr_ebreaku_reg <= '0';
                 dcsr_step_reg <= '0';
                 dcsr_cause_reg <= (others => '0');
+            else
+                if DEBUG_SUPPORT then
+                    if debug_mode_reg = '1' and wen_raw = '1' and addr = CSR_ADDRESSES.D_MODE.DCSR then
+                        dcsr_ebreakm_reg <= wdata_update(15);
+                        dcsr_ebreaku_reg <= wdata_update(12) when U_MODE else '0';
+                        dcsr_step_reg <= wdata_update(2);
+                    end if;
+                    if ?? enter_debug_mode then
+                        dcsr_cause_reg <= dcause_next;
+                    end if;
+                else
+                    dcsr_ebreakm_reg <= '0';
+                    dcsr_ebreaku_reg <= '0';
+                    dcsr_step_reg <= '0';
+                    dcsr_cause_reg <= (others => '0');
+                end if;
             end if;
         end if;
     end process;
@@ -686,24 +706,26 @@ begin
     dbg_data0_wdata <= wdata;
     dbg_data0_wen <= debug_mode and wen_raw and to_std_logic(addr = CSR_ADDRESSES.D_MODE.DMDATA0);
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            tcontrol_mpte_reg <= '0';
-            tcontrol_mte_reg <= '0';
-        elsif rising_edge(clk) then
-            if DEBUG_SUPPORT then
-                if wen_m_mode = '1' and addr = CSR_ADDRESSES.TRIGGER_MODULE.TCONTROL then
-                    tcontrol_mpte_reg <= wdata_update(7);
-                    tcontrol_mte_reg <= wdata_update(3);
-                elsif ?? trapreg_update_enter then
-                    tcontrol_mte_reg <= '0';
-                    tcontrol_mpte_reg <= tcontrol_mte_reg;
-                elsif ?? trapreg_update_exit then
-                    tcontrol_mte_reg <= tcontrol_mpte_reg;
-                end if;
-            else
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 tcontrol_mpte_reg <= '0';
                 tcontrol_mte_reg <= '0';
+            else
+                if DEBUG_SUPPORT then
+                    if wen_m_mode = '1' and addr = CSR_ADDRESSES.TRIGGER_MODULE.TCONTROL then
+                        tcontrol_mpte_reg <= wdata_update(7);
+                        tcontrol_mte_reg <= wdata_update(3);
+                    elsif ?? trapreg_update_enter then
+                        tcontrol_mte_reg <= '0';
+                        tcontrol_mpte_reg <= tcontrol_mte_reg;
+                    elsif ?? trapreg_update_exit then
+                        tcontrol_mte_reg <= tcontrol_mpte_reg;
+                    end if;
+                else
+                    tcontrol_mpte_reg <= '0';
+                    tcontrol_mte_reg <= '0';
+                end if;
             end if;
         end if;
     end process;
@@ -1002,49 +1024,53 @@ begin
     -- we hardwire dcsr.stepie to 0)
     step_event <= instr_ret or (trap_enter_vld and trap_enter_rdy);
 
-    process(clk_always_on, rst_n) begin
-        if ?? (not rst_n) then
-            dbg_req_halt_prev_reg <= '0';
-        elsif rising_edge(clk_always_on) then
-            dbg_req_halt_prev_reg <= dbg_req_halt when DEBUG_SUPPORT else '0';
+    process(clk_always_on) begin
+        if rising_edge(clk_always_on) then
+            if ?? rst then
+                dbg_req_halt_prev_reg <= '0';
+            else
+                dbg_req_halt_prev_reg <= dbg_req_halt when DEBUG_SUPPORT else '0';
+            end if;
         end if;
     end process;
 
-    process(clk, rst_n) begin
-        if ?? (not rst_n) then
-            have_just_reset_reg <= to_std_logic(DEBUG_SUPPORT);
-            dbg_req_halt_on_reset_sticky_reg <= '0';
-            step_halt_req_reg <= '0';
-            dbg_req_resume_prev_reg <= '0';
-            pending_dbg_resume_prev_reg <= '0';
-        elsif rising_edge(clk) then
-            if DEBUG_SUPPORT then
-                have_just_reset_reg <= '0';
-
-		        -- One-cycle delay on assertion of reset halt req is harmless because
-		        -- of a matching delay on the first instruction fetch (reset_holdoff).
-                if ?? (have_just_reset_reg and dbg_req_halt_on_reset) then
-                    dbg_req_halt_on_reset_sticky_reg <= '1';
-                elsif ?? enter_debug_mode then
-                    dbg_req_halt_on_reset_sticky_reg <= '0';
-                end if;
-
-                dbg_req_resume_prev_reg <= dbg_req_resume;
-
-                if ?? debug_mode_reg then
-                    step_halt_req_reg <= '0';
-                elsif ?? (dcsr_step_reg and step_event) then
-                    step_halt_req_reg <= '1';
-                end if;
-
-                pending_dbg_resume_prev_reg <= pending_dbg_resume;
-
-            else
+    process(clk) begin
+        if rising_edge(clk) then
+            if ?? rst then
                 have_just_reset_reg <= to_std_logic(DEBUG_SUPPORT);
                 dbg_req_halt_on_reset_sticky_reg <= '0';
                 step_halt_req_reg <= '0';
                 dbg_req_resume_prev_reg <= '0';
                 pending_dbg_resume_prev_reg <= '0';
+            else
+                if DEBUG_SUPPORT then
+                    have_just_reset_reg <= '0';
+
+    		        -- One-cycle delay on assertion of reset halt req is harmless because
+    		        -- of a matching delay on the first instruction fetch (reset_holdoff).
+                    if ?? (have_just_reset_reg and dbg_req_halt_on_reset) then
+                        dbg_req_halt_on_reset_sticky_reg <= '1';
+                    elsif ?? enter_debug_mode then
+                        dbg_req_halt_on_reset_sticky_reg <= '0';
+                    end if;
+
+                    dbg_req_resume_prev_reg <= dbg_req_resume;
+
+                    if ?? debug_mode_reg then
+                        step_halt_req_reg <= '0';
+                    elsif ?? (dcsr_step_reg and step_event) then
+                        step_halt_req_reg <= '1';
+                    end if;
+
+                    pending_dbg_resume_prev_reg <= pending_dbg_resume;
+
+                else
+                    have_just_reset_reg <= to_std_logic(DEBUG_SUPPORT);
+                    dbg_req_halt_on_reset_sticky_reg <= '0';
+                    step_halt_req_reg <= '0';
+                    dbg_req_resume_prev_reg <= '0';
+                    pending_dbg_resume_prev_reg <= '0';
+                end if;
             end if;
         end if;
     end process;
@@ -1109,13 +1135,15 @@ begin
 
     ---------------------------------------------------------------------------
     -- Trap request generation
-    process(clk_always_on, rst_n) begin
-        if ?? (not rst_n) then
-            irq_software_reg <= '0';
-            irq_timer_reg <= '0';
-        elsif rising_edge(clk_always_on) then
-            irq_software_reg <= irq_software;
-            irq_timer_reg <= irq_timer;
+    process(clk_always_on) begin
+        if rising_edge(clk_always_on) then
+            if ?? rst then
+                irq_software_reg <= '0';
+                irq_timer_reg <= '0';
+            else
+                irq_software_reg <= irq_software;
+                irq_timer_reg <= irq_timer;
+            end if;
         end if;
     end process;
 
