@@ -1,84 +1,58 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - removed E-extention                                 |
+|                       - removed Reset of Regfile                            |
+|                       - mapped to ECP5-Lutram                               |
+|                       - removed reset line                                  |
 \*****************************************************************************/
 
 // Register file
 // Single write port, dual read port
 
-`default_nettype none
-
-module hazard3_regfile_1w2r #(
-`include "hazard3_config.vh"
-) (
+module hazard3_regfile_1w2r (
 	input wire clk,
-	input wire rst_n,
 
-	input wire [4:0]        raddr1,
-	output reg [W_DATA-1:0] rdata1,
+	input wire [4:0]  raddr1,
+	output reg [31:0] rdata1,
 
-	input wire [4:0]        raddr2,
-	output reg [W_DATA-1:0] rdata2,
+	input wire [4:0]  raddr2,
+	output reg [31:0] rdata2,
 
-	input wire [4:0]        waddr,
-	input wire [W_DATA-1:0] wdata,
-	input wire              wen
+	input wire [4:0]  waddr,
+	input wire [31:0] wdata,
+	input wire        wen
 );
 
-localparam       N_REGS      = EXTENSION_E == 0 ? 32 : 16;
-localparam [4:0] REGNUM_MASK = {~|EXTENSION_E, 4'hf};
+wire [31:0] s_regAData, s_regBData;
 
-wire [4:0] raddr1_masked = raddr1 & REGNUM_MASK;
-wire [4:0] raddr2_masked = raddr2 & REGNUM_MASK;
-wire [4:0] waddr_masked  = waddr  & REGNUM_MASK;
+sramLutRam #( .nrOfAddressBits(5),
+              .nrOfDataBits(32) ) dataARam
+            ( .clock(clk),
+              .writeEnable(wen),
+              .writeAddress(waddr),
+              .readAddress(raddr1),
+              .writeData(wdata),
+              .readData(s_regAData));
 
-generate
-if (RESET_REGFILE) begin: real_dualport_reset
-	// This will presumably always be implemented with flops
-	reg [W_DATA-1:0] mem [0:N_REGS-1];
+sramLutRam #( .nrOfAddressBits(5),
+              .nrOfDataBits(32) ) dataBRam
+            ( .clock(clk),
+              .writeEnable(wen),
+              .writeAddress(waddr),
+              .readAddress(raddr2),
+              .writeData(wdata),
+              .readData(s_regBData));
 
-	integer i;
-	always @ (posedge clk or negedge rst_n) begin
-		if (!rst_n) begin
-			for (i = 0; i < N_REGS; i = i + 1) begin
-				mem[i] <= {W_DATA{1'b0}};
-			end
-			rdata1 <= {W_DATA{1'b0}};
-			rdata2 <= {W_DATA{1'b0}};
-		end else begin
-			if (wen) begin
-				mem[waddr_masked] <= wdata;
-			end
-			rdata1 <= mem[raddr1_masked];
-			rdata2 <= mem[raddr2_masked];
-		end
-	end
-end else begin: real_dualport_noreset
-	// This should be inference-compatible on FPGAs with dual-port (or 1R1W) BRAMs
-	`ifdef YOSYS
-	`ifdef FPGA_ICE40
-	// We do not require write-to-read bypass logic on the BRAM
-	(* no_rw_check *)
-	`endif
-	`endif
-	// Optionally force use of distributed RAM on Xilinx for better timing
-	`ifdef HAZARD3_REGFILE_RAM_STYLE_DISTRIBUTED
-	(* ram_style = "distributed" *)
-	`endif
-	reg [W_DATA-1:0] mem [0:N_REGS-1];
-
-	always @ (posedge clk) begin
-		if (wen) begin
-			mem[waddr_masked] <= wdata;
-		end
-		rdata1 <= mem[raddr1_masked];
-		rdata2 <= mem[raddr2_masked];
-	end
-end
-endgenerate
+always @(posedge clk)
+  begin
+    rdata1 <= (raddr1 == 5'd0) ? 32'd0 : s_regAData; // make sure we read 0 at address 0
+    rdata2 <= (raddr2 == 5'd0) ? 32'd0 : s_regBData; // make sure we read 0 at address 0
+  end
 
 endmodule
 
-`ifndef YOSYS
-`default_nettype wire
-`endif
+

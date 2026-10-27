@@ -1,17 +1,19 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                      - Removed E-extention                                  |
+|                      - Removed RESET_REGFILE                                |
 \*****************************************************************************/
 
 // Pass-through of parameters defined in hazard3_config.vh, so that these can
 // be set at instantiation rather than editing the config file, and will flow
 // correctly down through the hierarchy.
 
-.RESET_VECTOR        (RESET_VECTOR),
-.MTVEC_INIT          (MTVEC_INIT),
 .EXTENSION_A         (EXTENSION_A),
 .EXTENSION_C         (EXTENSION_C),
-.EXTENSION_E         (EXTENSION_E),
 .EXTENSION_M         (EXTENSION_M),
 .EXTENSION_XH3IRQ    (EXTENSION_XH3IRQ),
 .EXTENSION_XH3PMPM   (EXTENSION_XH3PMPM),
@@ -41,6 +43,5 @@
 .FAST_BRANCHCMP      (FAST_BRANCHCMP),
 .BRANCH_PREDICTOR    (BRANCH_PREDICTOR),
 .MTVEC_WMASK         (MTVEC_WMASK),
-.RESET_REGFILE       (RESET_REGFILE),
 .W_ADDR              (W_ADDR),
 .W_DATA              (W_DATA)

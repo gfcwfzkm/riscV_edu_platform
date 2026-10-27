@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                        Copyright (C) 2022 Luke Wren                         |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                      - Moved to active-high reset                           |
+|                      - Moved to synchronous reset                           |
 \*****************************************************************************/
 
 `default_nettype none
@@ -11,7 +16,7 @@ module hazard3_pmp #(
 `include "hazard3_config.vh"
 ) (
 	input  wire              clk,
-	input  wire              rst_n,
+	input  wire              rst,
 
 	// Config interface passed through CSR block
 	input  wire [11:0]       cfg_addr,
@@ -86,9 +91,9 @@ reg  [W_ADDR-3:0]      pmpaddr  [0:PMP_REGIONS-1];
 // other purposes e.g. stack guarding, peripheral emulation
 reg  [PMP_REGIONS-1:0] pmpcfg_m;
 
-always @ (posedge clk or negedge rst_n) begin: cfg_update
+always @ (posedge clk) begin: cfg_update
 	reg signed [31:0] i;
-	if (!rst_n) begin
+	if (rst) begin
 		for (i = 0; i < PMP_REGIONS; i = i + 1) begin
 			pmpcfg_l[i] <= PMP_HARDWIRED[i] ? PMP_HARDWIRED_CFG[8 * i + 7]      : 1'b0;
 			pmpcfg_a[i] <= PMP_HARDWIRED[i] ? PMP_HARDWIRED_CFG[8 * i + 3 +: 2] : 2'h0;

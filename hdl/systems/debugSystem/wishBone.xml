@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<WishBoneBusDescription version="1.0">
+  This file is intended to be loaded by busGenerator
+
+  <BusMaster name="debugIf" priority="0"/>
+  <BusSlave baseAddress="0x0" fixedBase="true" name="sramSlave" nrOfSelBits="16"/>
+  <BusSlave baseAddress="0x10000" name="leds" nrOfSelBits="11"/>
+  <BusSlave baseAddress="0x10800" name="sevenSegments" nrOfSelBits="5"/>
+  <BusSlave baseAddress="0x10820" name="uartBus" nrOfSelBits="3"/>
+</WishBoneBusDescription>

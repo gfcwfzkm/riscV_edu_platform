@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - moved to active high reset                          |
+|                       - moved to synchronous reset                          |
 \*****************************************************************************/
 
 // Combined multiply/divide/modulo circuit. All operations performed at 1 bit
@@ -23,7 +28,7 @@ module hazard3_muldiv_seq #(
 `include "hazard3_width_const.vh"
 ) (
 	input  wire               clk,
-	input  wire               rst_n,
+	input  wire               rst,
 	input  wire [W_MULOP-1:0] op,
 	input  wire               op_vld,
 	output wire               op_rdy,
@@ -129,8 +134,8 @@ reg sign_postadj_carry;
 
 localparam CTR_TOP = XLEN[W_CTR-1:0];
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		ctr <= {W_CTR{1'b0}};
 		sign_preadj_done <= 1'b1;
 		sign_postadj_done <= 1'b1;
@@ -232,8 +237,8 @@ always assert(XLEN == 32);
 reg [XLEN-1:0] fml_a_saved;
 reg [XLEN-1:0] fml_b_saved;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		fml_a_saved <= {XLEN{1'b0}};
 		fml_b_saved <= {XLEN{1'b0}};
 	end else if (op_vld && op_rdy) begin
@@ -261,7 +266,7 @@ assign result_l =
 
 `ifdef HAZARD3_ASSERTIONS
 
-always @ (posedge clk) if (rst_n && $past(rst_n)) begin: properties
+always @ (posedge clk) if (~rst && $past(~rst)) begin: properties
 	integer i;
 	reg alive;
 
