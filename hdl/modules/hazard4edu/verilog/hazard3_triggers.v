@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                        Copyright (C) 2022 Luke Wren                         |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - Changed to active-high reset                        |
+|                       - Changed to synchronous reset                        |
 \*****************************************************************************/
 
 `default_nettype none
@@ -32,7 +37,7 @@ module hazard3_triggers #(
 `include "hazard3_config.vh"
 ) (
 	input  wire              clk,
-	input  wire              rst_n,
+	input  wire              rst,
 
 	// Config interface passed through CSR block
 	input  wire [11:0]       cfg_addr,
@@ -168,9 +173,9 @@ localparam [15:0] IMPLEMENTED_EXCEPTION_CAUSES = {
 localparam N_TRIGGERS_PADDED = 1 << $clog2(N_TRIGGERS);
 wire [N_TRIGGERS_PADDED-1:0] tselect_match = {{N_TRIGGERS_PADDED-1{1'b0}}, 1'b1} << tselect;
 
-always @ (posedge clk or negedge rst_n) begin: cfg_update
+always @ (posedge clk) begin: cfg_update
 	integer i;
-	if (!rst_n) begin
+	if (rst) begin
 
 		tselect <= {W_TSELECT{1'b0}};
 
@@ -401,8 +406,8 @@ wire interrupt_trigger_match =
 // breakpoints.
 reg break_ie;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		break_ie <= 1'b0;
 	end else begin
 		break_ie <= !x_d_mode && (break_ie || (
@@ -420,8 +425,8 @@ wire step_break_enabled = trig_m_en && !x_d_mode && (
 
 reg break_on_step;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		break_on_step <= 1'b0;
 	end else begin
 		// Note icount triggers differ from dcsr.step in that they ignore

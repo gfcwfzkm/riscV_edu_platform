@@ -1,6 +1,13 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                      - Moved to active-high reset                           |
+|                      - Moved to synchronous reset                           |
+|                      - Added external reset vector                          |
+|                      - Removed E-extension                                  |
 \*****************************************************************************/
 
 `default_nettype none
@@ -9,7 +16,9 @@ module hazard3_frontend #(
 `include "hazard3_config.vh"
 ) (
 	input  wire              clk,
-	input  wire              rst_n,
+	input  wire              rst,
+	
+	input wire [31:0]        reset_vector,
 
 	// Fetch interface
 	// addr_vld may be asserted at any time, but after assertion,
@@ -184,9 +193,9 @@ always @ (*) begin: boundary_conditions
 	end
 end
 
-always @ (posedge clk or negedge rst_n) begin: fifo_update
+always @ (posedge clk) begin: fifo_update
 	integer i;
-	if (!rst_n) begin
+	if (rst) begin
 		for (i = 0; i < FIFO_DEPTH; i = i + 1) begin
 			fifo_valid_hw[i] <= 2'b00;
 			fifo_mem[i] <= 32'd0;
@@ -233,7 +242,7 @@ always @ (posedge clk or negedge rst_n) begin: fifo_update
 end
 
 `ifdef HAZARD3_ASSERTIONS
-always @ (posedge clk) if (rst_n) begin
+always @ (posedge clk) if (!rst) begin
 	// FIFO validity must be compact, so we can always consume from the end
 	if (!fifo_valid[0]) begin
 		assert(!fifo_valid[1]);
@@ -261,8 +270,8 @@ if (BRANCH_PREDICTOR) begin: have_btb
 	assign btb_src_size    = btb_src_size_r;
 	assign btb_target_addr = btb_target_addr_r;
 	assign btb_valid       = btb_valid_r;
-	always @ (posedge clk or negedge rst_n) begin
-		if (!rst_n) begin
+	always @ (posedge clk) begin
+		if (rst) begin
 			btb_src_addr_r <= {W_ADDR{1'b0}};
 			btb_src_size_r <= 1'b0;
 			btb_target_addr_r <= {W_ADDR{1'b0}};
@@ -328,9 +337,9 @@ wire [W_ADDR-1:0] jump_target_post_increment =
 	{jump_target[W_ADDR-1:2],                          2'b00} +
 	{{W_ADDR-3{1'b0}}, mem_addr_rdy && !mem_addr_hold, 2'b00};
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		fetch_addr <= RESET_VECTOR;
+always @ (posedge clk) begin
+	if (rst) begin
+		fetch_addr <= reset_vector;
 		// M-mode at reset:
 		fetch_priv <= 1'b1;
 		btb_prev_start_of_overhanging <= 1'b0;
@@ -353,8 +362,8 @@ end
 // Combinatorially generate the address-phase request
 
 reg reset_holdoff;
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		reset_holdoff <= 1'b1;
 	end else begin
 		reset_holdoff <= 1'b0;
@@ -365,7 +374,7 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 `ifdef HAZARD3_ASSERTIONS
-always @ (posedge clk) if (rst_n) begin
+always @ (posedge clk) if (!rst) begin
 	assert(!(jump_target_vld && reset_holdoff));
 end
 `endif
@@ -425,8 +434,8 @@ wire cir_room_for_fetch;
 assign fifo_push = mem_data_vld && ~|ctr_flush_pending && !(cir_room_for_fetch && fifo_empty)
 	&& !(DEBUG_SUPPORT && debug_mode);
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		mem_addr_hold <= 1'b0;
 		pending_fetches <= 2'h0;
 		ctr_flush_pending <= 2'h0;
@@ -442,15 +451,15 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 `ifdef HAZARD3_ASSERTIONS
-always @ (posedge clk) if (rst_n) begin
+always @ (posedge clk) if (!rst) begin
 	assert(ctr_flush_pending <= pending_fetches);
 	assert(pending_fetches < 2'd3);
 	assert(!(mem_data_vld && !pending_fetches));
 end
 `endif
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		mem_data_hwvld <= 2'b11;
 		mem_aph_hwvld <= 2'b11;
 		mem_data_predbranch <= 2'b00;
@@ -507,8 +516,8 @@ if (PMP_REGIONS > 0 || DEBUG_SUPPORT != 0) begin: have_check_reg
 
 	reg [W_ADDR-1:0] check_addr_dph;
 	reg              check_m_mode_dph;
-	always @ (posedge clk or negedge rst_n) begin
-		if (!rst_n) begin
+	always @ (posedge clk) begin
+		if (rst) begin
 			check_addr_dph <= {W_ADDR{1'b0}};
 			check_m_mode_dph <= 1'b0;
 		end else if (mem_addr_vld && mem_addr_rdy) begin
@@ -649,8 +658,8 @@ wire [1:0] buf_level_next = {1'b1, |EXTENSION_C} & (
 	jump_now                     ? 2'h0 : level_next_no_fetch + fetch_fill_amount
 );
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		buf_level <= 2'h0;
 		cir_vld <= 2'h0;
 		// Mysterious reset value ensures address buses are zero in reset
@@ -666,7 +675,7 @@ end
 `ifdef HAZARD3_ASSERTIONS
 reg [1:0] prop_past_buf_level; // Workaround for weird non-constant $past reset issue
 always @ (posedge clk) begin
-	if (!rst_n) begin
+	if (rst) begin
 		prop_past_buf_level <= 2'h0;
 	end else begin
 		prop_past_buf_level <= buf_level;
@@ -780,13 +789,6 @@ always @ (*) begin
 	default:                                     predecode_rs2_fine = predecode_rs2_coarse;
 	endcase
 
-	if (|EXTENSION_E) begin
-		predecode_rs1_coarse[4] = 1'b0;
-		predecode_rs2_coarse[4] = 1'b0;
-		predecode_rs1_fine[4] = 1'b0;
-		predecode_rs2_fine[4] = 1'b0;
-	end
-
 end
 
 // ----------------------------------------------------------------------------
@@ -835,9 +837,6 @@ end else begin: have_decompress
 	hazard3_instr_decompress #(
 		`include "hazard3_config_inst.vh"
 	) decomp (
-		.clk                        (clk),
-		.rst_n                      (rst_n),
-
 		.instr_in                   (next_instr),
 
 		.instr_is_32bit             (decomp_instr_is_32bit),
@@ -861,8 +860,8 @@ end else begin: have_decompress
 	wire cir_is_uop_next = decomp_is_uop && |buf_level_next;
 	wire cir_uop_nonfinal_next = cir_is_uop_next && !decomp_is_final_uop;
 
-	always @ (posedge clk or negedge rst_n) begin
-		if (!rst_n) begin
+	always @ (posedge clk) begin
+		if (rst) begin
 			cir                  <= 32'd3;
 			cir_is_32bit         <= 1'b0;
 			cir_invalid_16bit    <= 1'b0;

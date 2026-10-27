@@ -44,8 +44,8 @@ assign rvfi_valid = rvfi_valid_r;
 assign rvfi_insn = rvfi_insn_r;
 assign rvfi_trap = rvfi_trap_r;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (!rst) begin
 		rvfm_m_valid <= 1'b0;
 		rvfi_valid_r <= 1'b0;
 		rvfi_trap_r <= 1'b0;
@@ -71,7 +71,7 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 `ifdef HAZARD3_ASSERTIONS
-always @ (posedge clk) if (rst_n) begin
+always @ (posedge clk) if (!rst) begin
 	// Sanity checks for above
 	if (d_rd != 5'h0)
 		assert(rvfm_x_valid);
@@ -94,7 +94,7 @@ wire rvfm_x_intr_retained =
 	df_lspair_phase_next;
 
 always @ (posedge clk) begin
-	if (!rst_n) begin
+	if (rst) begin
 		rvfm_x_intr <= 1'b0;
 		rvfm_m_intr <= 1'b0;
 		rvfi_intr_r <= 1'b0;
@@ -116,8 +116,8 @@ end
 // Hazard3 is an in-order core:
 reg [63:0] rvfm_retire_ctr;
 assign rvfi_order = rvfm_retire_ctr;
-always @ (posedge clk or negedge rst_n)
-	if (!rst_n)
+always @ (posedge clk)
+	if (rst)
 		rvfm_retire_ctr <= 0;
 	else if (rvfi_valid)
 		rvfm_retire_ctr <= rvfm_retire_ctr + 1;
@@ -133,8 +133,8 @@ reg [31:0] rvfm_xm_pc_next;
 // Record a jump target that was issued while stalled
 reg        rvfm_x_saw_f_jump;
 reg [31:0] rvfm_x_saw_f_jump_target;
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		rvfm_x_saw_f_jump <= 1'b0;
 		rvfm_x_saw_f_jump_target <= 32'd0;
 	end else if (f_jump_now && !(m_trap_enter_vld && m_trap_enter_rdy) && (x_stall || (fd_cir_is_uop && fd_cir_uop_nonfinal))) begin
@@ -168,8 +168,8 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		rvfm_xm_pc <= 0;
 		rvfm_xm_pc_next <= 0;
 	end else begin
@@ -226,8 +226,8 @@ assign rvfi_rd_wdata = |mw_rd && rvfm_writeback_mask ? mw_result : 32'h0;
 reg [31:0] rvfm_xm_rdata1;
 reg [31:0] rvfm_xm_rdata2;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		rvfm_xm_rdata1 <= 32'h0;
 		rvfm_xm_rdata2 <= 32'h0;
 	end else if (!x_stall) begin
@@ -252,8 +252,8 @@ assign rvfi_rs2_addr = rvfi_rs2_addr_r;
 assign rvfi_rs1_rdata = rvfi_rs1_rdata_r;
 assign rvfi_rs2_rdata = rvfi_rs2_rdata_r;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		rvfi_rs1_addr_r <= 5'h0;
 		rvfi_rs2_addr_r <= 5'h0;
 		rvfi_rs1_rdata_r <= 32'h0;
@@ -374,7 +374,7 @@ end
 `ifdef RISCV_FORMAL_FAIRNESS
 reg [7:0] rvfm_sleep_counter;
 always @ (posedge clk) begin
-	if (!rst_n) begin
+	if (rst) begin
 		rvfm_sleep_counter <= 8'd00;
 	end else if (xm_sleep_wfi || xm_sleep_block) begin
 		rvfm_sleep_counter <= rvfm_sleep_counter + 8'h01;

@@ -1,6 +1,13 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - Changed to active high reset                        |
+|                       - Changed to synchronous reset                        |
+|                       - Added MTVEC_INIT as external port                   |
+|                       - Removed E-extension                                 |
 \*****************************************************************************/
 
 `default_nettype none
@@ -17,7 +24,8 @@ module hazard3_csr #(
 ) (
 	input  wire               clk,
 	input  wire               clk_always_on,
-	input  wire               rst_n,
+	input  wire               rst,
+	input  wire [31:0]        mtvec_init,
 
 	// Debug signalling
 	output reg                debug_mode,
@@ -159,8 +167,8 @@ endfunction
 wire enter_debug_mode;
 wire exit_debug_mode;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		debug_mode <= 1'b0;
 	end else if (DEBUG_SUPPORT) begin
 		debug_mode <= (debug_mode && !exit_debug_mode) || enter_debug_mode;
@@ -199,8 +207,8 @@ reg mstatus_tw;
 //  mode (U if U-mode is implemented, else M). If xPP=M, xRET also sets
 //  MPRV=0."
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		m_mode <= 1'b1;
 		mstatus_mpie <= 1'b0;
 		mstatus_mie <= 1'b0;
@@ -209,7 +217,7 @@ always @ (posedge clk or negedge rst_n) begin
 		mstatus_tw <= 1'b0;
 	end else if (!CSR_M_TRAP) begin
 		// Explicit tie-off when unimplemented; avoid synthesis warning about
-		// flops insensitive to clk. Should match the rst_n case above so that
+		// flops insensitive to clk. Should match the rst case above so that
 		// flops are constant-propagated away.
 		m_mode <= 1'b1;
 		mstatus_mpie <= 1'b0;
@@ -266,11 +274,8 @@ assign trap_wfi = mstatus_tw && !(debug_mode || m_mode);
 
 reg [XLEN-1:0] mscratch;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		mscratch <= X0;
-	end else if (!CSR_M_TRAP) begin
-		// Explicit tie-off when unimplemented
+always @ (posedge clk) begin
+	if (rst || !CSR_M_TRAP) begin
 		mscratch <= X0;
 	end else begin
 		if (wen_m_mode && addr == MSCRATCH) begin
@@ -284,12 +289,9 @@ reg  [XLEN-1:0] mtvec_reg;
 wire [XLEN-1:0] mtvec = mtvec_reg & ({XLEN{1'b1}} << 2);
 wire            irq_vector_enable = mtvec_reg[0];
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		mtvec_reg <= MTVEC_INIT;
-	end else if (!CSR_M_TRAP) begin
-		// Explicit tie-off when unimplemented
-		mtvec_reg <= MTVEC_INIT;
+always @ (posedge clk) begin
+	if (rst || !CSR_M_TRAP) begin
+		mtvec_reg <= mtvec_init;
 	end else begin
 		if (wen_m_mode && addr == MTVEC) begin
 			mtvec_reg <= update_nonconst(mtvec_reg, MTVEC_WMASK);
@@ -302,11 +304,8 @@ reg [XLEN-1:0] mepc;
 // mepc only holds values aligned to instruction alignment
 localparam MEPC_MASK = {{XLEN-2{1'b1}}, |EXTENSION_C, 1'b0};
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		mepc <= X0;
-	end else if (!CSR_M_TRAP) begin
-		// Explicit tie-off when unimplemented
+always @ (posedge clk) begin
+	if (rst || !CSR_M_TRAP) begin
 		mepc <= X0;
 	end else begin
 		if (trapreg_update_enter) begin
@@ -323,11 +322,8 @@ localparam MIE_WMASK = 32'h00000888; // meie, mtie, msie
 
 wire meicontext_clearts;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		mie <= X0;
-	end else if (!CSR_M_TRAP) begin
-		// Explicit tie-off when unimplemented
+always @ (posedge clk) begin
+	if (rst || !CSR_M_TRAP) begin
 		mie <= X0;
 	end else begin
 		if (wen_m_mode && addr == MIE) begin
@@ -356,12 +352,8 @@ reg  [3:0] mcause_code;
 wire       mcause_irq_next;
 wire [3:0] mcause_code_next;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
-		mcause_irq <= 1'b0;
-		mcause_code <= 4'h0;
-	end else if (!CSR_M_TRAP) begin
-		// Explicit tie-off when unimplemented
+always @ (posedge clk) begin
+	if (rst || !CSR_M_TRAP) begin
 		mcause_irq <= 1'b0;
 		mcause_code <= 4'h0;
 	end else begin
@@ -413,9 +405,9 @@ localparam [31:0] MISA_VAL = {
 	7'd0,              // T...N, no
 	|EXTENSION_M,
 	3'd0,              // L...J, no
-	~|EXTENSION_E,     // RVI base ISA
+	1'd1,              // RVI base ISA
 	3'd0,              // H, G, F, no
-	|EXTENSION_E,      // RVE base ISA
+	1'd0,              // RVE base ISA
 	1'b0,              // D, no
 	|EXTENSION_C,
 	1'b0,              // B is defined as ZbaZbbZbs, so no
@@ -436,7 +428,7 @@ if (|EXTENSION_XH3IRQ) begin: have_irq_ctrl
 	) irq_ctrl (
 		.clk                  (clk),
 		.clk_always_on        (clk_always_on),
-		.rst_n                (rst_n),
+		.rst                  (rst),
 
 		.addr                 (addr),
 		.wtype                (wtype),
@@ -462,8 +454,8 @@ end else begin: no_irq_ctrl
 
 	reg external_irq_pending_r;
 
-	always @ (posedge clk_always_on or negedge rst_n) begin
-		if (!rst_n) begin
+	always @ (posedge clk_always_on) begin
+		if (rst) begin
 			external_irq_pending_r <= 1'b0;
 		end else begin
 			external_irq_pending_r <= |irq;
@@ -491,7 +483,7 @@ assign pwr_allow_clkgate = 1'b0;
 // B is a shorthand for ZbaZbbZbs:
 localparam [0:0]   EXTENSION_B     = 1'b0;
 // RV32I and RV32E are complementary:
-localparam [0:0]   EXTENSION_I     = ~|EXTENSION_E;
+localparam [0:0]   EXTENSION_I     = 1'b1;
 // Zbkc is a subset of Zbc:
 localparam [0:0]   EXTENSION_ZBKC  = 1'b0;
 // Zca is (instructions-wise) a subset of C:
@@ -508,7 +500,6 @@ localparam [127:0] h3misa_standard_extensions =
 	({127'd0, |EXTENSION_A       } << 0 ) |
 	({127'd0, |EXTENSION_B       } << 1 ) |
 	({127'd0, |EXTENSION_C       } << 2 ) |
-	({127'd0, |EXTENSION_E       } << 4 ) |
 	({127'd0, |EXTENSION_I       } << 8 ) |
 	({127'd0, |EXTENSION_M       } << 12) |
 	({127'd0, |1'b0              } << 27) |    // EXTENSION_ZBA
@@ -573,8 +564,8 @@ wire minstret_stopped = mcountinhibit_ir || debug_mode || wen_m_mode && (
 	addr == MINSTRETH || addr == MINSTRET
 );
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		mcycleh <= X0;
 		mcycle <= X0;
 		minstreth <= X0;
@@ -615,8 +606,8 @@ reg mcounteren_cy;
 reg mcounteren_tm;
 reg mcounteren_ir;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		mcounteren_cy <= 1'b0;
 		mcounteren_tm <= 1'b0;
 		mcounteren_ir <= 1'b0;
@@ -649,8 +640,8 @@ localparam DCSR_CAUSE_TRIGGER = 3'h2;
 localparam DCSR_CAUSE_HALTREQ = 3'h3;
 localparam DCSR_CAUSE_STEP    = 3'h4;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		dcsr_ebreakm <= 1'b0;
 		dcsr_ebreaku <= 1'b0;
 		dcsr_step <= 1'b0;
@@ -686,8 +677,8 @@ assign dbg_data0_wen = debug_mode && wen_raw && addr == DMDATA0;
 reg tcontrol_mte;
 reg tcontrol_mpte;
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		tcontrol_mpte <= 1'b0;
 		tcontrol_mte <= 1'b0;
 	end else if (wen_m_mode && addr == TCONTROL) begin
@@ -1270,8 +1261,8 @@ wire step_event = instr_ret || (trap_enter_vld && trap_enter_rdy);
 
 // Halt request input register needs to always be clocked, because a WFI needs
 // to fall through if the debugger requests halt of a sleeping core.
-always @ (posedge clk_always_on or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk_always_on) begin
+	if (rst) begin
 		dbg_req_halt_prev <= 1'b0;
 	end else begin
 		// Just a delayed version of the request from outside of the core.
@@ -1280,8 +1271,8 @@ always @ (posedge clk_always_on or negedge rst_n) begin
 	end
 end
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		have_just_reset <= |DEBUG_SUPPORT;
 		dbg_req_halt_on_reset_sticky <= 1'b0;
 		step_halt_req <= 1'b0;
@@ -1381,8 +1372,8 @@ reg irq_software_r;
 reg irq_timer_r;
 
 // Always clocked, as it's used to generate a wakeup.
-always @ (posedge clk_always_on or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk_always_on) begin
+	if (rst) begin
 		irq_software_r <= 1'b0;
 		irq_timer_r <= 1'b0;
 	end else begin
@@ -1508,8 +1499,8 @@ assign m_mode_loadstore = !U_MODE || debug_mode || (
 // Keep track of whether we are in a trap (only for formal property purposes)
 reg in_trap;
 
-always @ (posedge clk or negedge rst_n)
-	if (!rst_n)
+always @ (posedge clk)
+	if (rst)
 		in_trap <= 1'b0;
 	else
 		in_trap <= (in_trap || (trap_enter_vld && trap_enter_rdy))
@@ -1526,8 +1517,8 @@ always @ (posedge clk) begin
 	// Note the actual IRQ registers have been moved into hazard3_irq_ctrl
 	// (and are now optional) so repeat them here for the property
 	reg [NUM_IRQS-1:0] irq_r;
-	always @ (posedge clk_always_on or negedge rst_n) begin
-		if (!rst_n) begin
+	always @ (posedge clk_always_on) begin
+		if (rst) begin
 			irq_r <= {NUM_IRQS{1'b0}};
 		end else begin
 			irq_r <= irq;
@@ -1576,7 +1567,7 @@ always @ (posedge clk) begin
 	if (trap_enter_vld && trap_enter_rdy && $past(trap_enter_vld && trap_enter_rdy))
 		assert($past(except == EXCEPT_MRET));
 
-	if (rst_n && $past(trap_enter_vld && !trap_enter_rdy && !trap_is_irq)) begin
+	if (!rst && $past(trap_enter_vld && !trap_enter_rdy && !trap_is_irq)) begin
 		// Exception which didn't go through should not disappear
 		assert(trap_enter_vld);
 		// Exception should not be replaced by IRQ

@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                        Copyright (C) 2022 Luke Wren                         |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                      - Moved to active-high reset                           |
+|                      - Moved to synchronous reset                           |
 \*****************************************************************************/
 
 `default_nettype none
@@ -13,7 +18,7 @@ module hazard3_irq_ctrl #(
 ) (
 	input  wire                clk,
 	input  wire                clk_always_on,
-	input  wire                rst_n,
+	input  wire                rst,
 
 	// CSR interface
 	input  wire [11:0]         addr,
@@ -65,8 +70,8 @@ for (g = 0; g < NUM_IRQS; g = g + 1) begin: irq_reg_loop
 		assign irq_r[g] = irq[g];
 	end else begin: have_reg
 		reg q;
-		always @ (posedge clk_always_on or negedge rst_n) begin
-			if (!rst_n) begin
+		always @ (posedge clk_always_on) begin
+			if (rst) begin
 				q <= 1'b0;
 			end else begin
 				q <= irq[g];
@@ -95,9 +100,9 @@ wire [MAX_IRQS-1:0]   meiea_rdata  = {{MAX_IRQS-NUM_IRQS{1'b0}}, meiea};
 wire [MAX_IRQS-1:0]   meifa_rdata  = {{MAX_IRQS-NUM_IRQS{1'b0}}, meifa};
 wire [4*MAX_IRQS-1:0] meipra_rdata = {{4*(MAX_IRQS-NUM_IRQS){1'b0}}, meipra};
 
-always @ (posedge clk or negedge rst_n) begin: update_irq_reg_arrays
+always @ (posedge clk) begin: update_irq_reg_arrays
 	reg signed [31:0] i;
-	if (!rst_n) begin
+	if (rst) begin
 		meiea <= {NUM_IRQS{1'b0}};
 		meifa <= {NUM_IRQS{1'b0}};
 		meipra <= {4*NUM_IRQS{1'b0}};
@@ -134,8 +139,8 @@ wire [4:0] preempt_level_next = meinext_noirq ? 5'h10 : (
 	(5'd1 << (4 - IRQ_PRIORITY_BITS)) + {1'b0, eirq_highest_priority}
 );
 
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		meicontext_pppreempt <= 4'h0;
 		meicontext_ppreempt <= 4'h0;
 		meicontext_preempt <= 5'h0;

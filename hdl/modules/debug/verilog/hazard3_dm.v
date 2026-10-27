@@ -59,12 +59,12 @@ module hazard3_dm #(
     input  wire [N_HARTS-1:0]        hart_running,
 
     // Hart access to data0 CSR (assumed to be core-internal but per-hart)
-    output wire [N_HARTS*32-1:0]       hart_data0_rdata,
-    input  wire [N_HARTS*32-1:0]       hart_data0_wdata,
+    output wire [N_HARTS*32-1:0]     hart_data0_rdata,
+    input  wire [N_HARTS*32-1:0]     hart_data0_wdata,
     input  wire [N_HARTS-1:0]        hart_data0_wen,
 
     // Hart instruction injection
-    output wire [N_HARTS*32-1:0]       hart_instr_data,
+    output wire [N_HARTS*32-1:0]     hart_instr_data,
     output reg  [N_HARTS-1:0]        hart_instr_data_vld,
     input  wire [N_HARTS-1:0]        hart_instr_data_rdy,
     input  wire [N_HARTS-1:0]        hart_instr_caught_exception,

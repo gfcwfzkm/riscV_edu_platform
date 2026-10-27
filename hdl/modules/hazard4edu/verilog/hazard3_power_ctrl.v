@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                        Copyright (C) 2022 Luke Wren                         |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                      - Moved to active-high reset                           |
+|                      - Moved to synchronous reset                           |
 \*****************************************************************************/
 
 `default_nettype none
@@ -11,7 +16,7 @@ module hazard3_power_ctrl #(
 `include "hazard3_config.vh"
 ) (
 	input  wire              clk_always_on,
-	input  wire              rst_n,
+	input  wire              rst,
 
 	// 4-phase (Gray code) req/ack handshake for requesting and releasing
 	// power+clock enable on non-processor hardware, e.g. the bus fabric. This
@@ -63,8 +68,8 @@ wire active_wake_req =
 // power up acknowledge is also high at reset. If this is a problem, extend
 // the core reset.
 
-always @ (posedge clk_always_on or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk_always_on) begin
+	if (rst) begin
 		state <= S_AWAKE;
 		pwrup_req <= 1'b1;
 		clk_en <= 1'b1;
@@ -124,7 +129,7 @@ end
 reg past_sleeping;
 reg past_stall_release;
 always @ (posedge clk_always_on) begin
-	if (!rst_n) begin
+	if (rst) begin
 		past_sleeping <= 1'b0;
 		past_stall_release <= 1'b0;
 	end else begin
@@ -154,8 +159,8 @@ end
 // Unblock signal is sticky: a prior unblock with no block since will cause
 // the next block to immediately fall through.
 
-always @ (posedge clk_always_on or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk_always_on) begin
+	if (rst) begin
 		block_wakeup_req <= 1'b0;
 	end else begin
 		// Note the OR takes precedence over the AND, so we don't miss a second

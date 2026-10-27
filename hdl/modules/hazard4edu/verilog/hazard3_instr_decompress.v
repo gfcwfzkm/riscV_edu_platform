@@ -1,6 +1,10 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2023 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - Removed clk and rst_n                               |
 \*****************************************************************************/
 
 // Little instructions go in, big instructions come out
@@ -10,9 +14,6 @@
 module hazard3_instr_decompress #(
 `include "hazard3_config.vh"
 ) (
-	input  wire        clk,
-	input  wire        rst_n,
-
 	input  wire [31:0] instr_in,
 
 	output reg         instr_is_32bit,

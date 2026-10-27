@@ -1,0 +1,7 @@
+support
+debug
+leds
+sramSlave
+sevenSegments
+uart
+

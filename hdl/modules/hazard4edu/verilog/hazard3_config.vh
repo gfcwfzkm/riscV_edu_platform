@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                      - Removed E-extention                                  |
+|                      - Removed RESET_REGFILE                                |
 \*****************************************************************************/
 
 // Hazard3 CPU configuration parameters
@@ -14,23 +19,6 @@
 // instantiations.
 
 // ----------------------------------------------------------------------------
-// Reset state configuration
-
-// RESET_VECTOR: Address of first instruction executed.
-parameter RESET_VECTOR        = 32'h00000000,
-
-// MTVEC_INIT: Initial value of trap vector base. Bits clear in MTVEC_WMASK
-// will never change from this initial value. Bits set in MTVEC_WMASK can be
-// written/set/cleared as normal.
-//
-// Note that mtvec bits 1:0 do not affect the trap base (as per RISC-V spec).
-// Bit 1 is don't care, bit 0 selects the vectoring mode: unvectored if == 0
-// (all traps go to mtvec), vectored if == 1 (exceptions go to mtvec, IRQs to
-// mtvec + mcause * 4). This means MTVEC_INIT also sets the initial vectoring
-// mode.
-parameter MTVEC_INIT          = 32'h00000000,
-
-// ----------------------------------------------------------------------------
 // Standard RISC-V ISA support
 
 // EXTENSION_A: Support for atomic read/modify/write instructions
@@ -38,10 +26,6 @@ parameter EXTENSION_A         = 1,
 
 // EXTENSION_C: Support for compressed (variable-width) instructions
 parameter EXTENSION_C         = 1,
-
-// EXTENSION_E: Implement the RV32E base extension rather than RV32I. This
-// reduces the number of integer registers from 31 to 15.
-parameter EXTENSION_E         = 1,
 
 // EXTENSION_M: Support for hardware multiply/divide/modulo instructions
 parameter EXTENSION_M         = 1,
@@ -118,7 +102,7 @@ parameter CSR_M_MANDATORY     = 1,
 parameter CSR_M_TRAP          = 1,
 
 // CSR_COUNTER: Include performance counters and Zicntr CSRs
-parameter CSR_COUNTER         = 0,
+parameter CSR_COUNTER         = 1,
 
 // U_MODE: Support the U (user) execution mode. In U mode, the core performs
 // unprivileged bus accesses, and software's access to CSRs is restricted.
@@ -163,11 +147,11 @@ parameter PMP_HARDWIRED_CFG   = {(PMP_REGIONS > 0 ? PMP_REGIONS : 1){8'h00}},
 // DEBUG_SUPPORT: Support for run/halt and instruction injection from an
 // external Debug Module, support for Debug Mode, and Debug Mode CSRs.
 // Requires: CSR_M_MANDATORY, CSR_M_TRAP.
-parameter DEBUG_SUPPORT       = 0,
+parameter DEBUG_SUPPORT       = 1,
 
 // BREAKPOINT_TRIGGERS: Number of triggers which support type=2 execute=1
 // (but not store/load=1, i.e. not a watchpoint). Requires: DEBUG_SUPPORT
-parameter BREAKPOINT_TRIGGERS = 0,
+parameter BREAKPOINT_TRIGGERS = 8,
 
 // ----------------------------------------------------------------------------
 // External interrupt support
@@ -175,7 +159,7 @@ parameter BREAKPOINT_TRIGGERS = 0,
 // NUM_IRQS: Number of external IRQs. Minimum 1, maximum 512. Note that if
 // EXTENSION_XH3IRQ (Hazard3 interrupt controller) is disabled then multiple
 // external interrupts are simply OR'd into mip.meip.
-parameter NUM_IRQS            = 1,
+parameter NUM_IRQS            = 8,
 
 // IRQ_PRIORITY_BITS: Number of priority bits implemented for each interrupt
 // in meipra, if EXTENSION_XH3IRQ is enabled. The number of distinct levels
@@ -209,38 +193,33 @@ parameter REDUCED_BYPASS      = 0,
 
 // MULDIV_UNROLL: Bits per clock for multiply/divide circuit, if present. Must
 // be a power of 2.
-parameter MULDIV_UNROLL       = 1,
+parameter MULDIV_UNROLL       = 2,
 
 // MUL_FAST: Use single-cycle multiply circuit for MUL instructions, retiring
 // to stage 3. The sequential multiply/divide circuit is still used for MULH*
-parameter MUL_FAST            = 0,
+parameter MUL_FAST            = 1,
 
 // MUL_FASTER: Retire fast multiply results to stage 2 instead of stage 3.
 // Throughput is the same, but latency is reduced from 2 cycles to 1 cycle.
 // Requires: MUL_FAST.
-parameter MUL_FASTER          = 0,
+parameter MUL_FASTER          = 1,
 
 // MULH_FAST: extend the fast multiply circuit to also cover MULH*, and remove
 // the multiply functionality from the sequential multiply/divide circuit.
 // Requires: MUL_FAST
-parameter MULH_FAST           = 0,
+parameter MULH_FAST           = 1,
 
 // FAST_BRANCHCMP: Instantiate a separate comparator (eq/lt/ltu) for branch
 // comparisons, rather than using the ALU. Improves fetch address delay,
 // especially if Zba extension is enabled. Disabling may save area.
 parameter FAST_BRANCHCMP      = 1,
 
-// RESET_REGFILE: whether to support reset of the general purpose registers.
-// There are around 1k bits in the register file, so the reset can be
-// disabled e.g. to permit block-RAM inference on FPGA.
-parameter RESET_REGFILE       = 0,
-
 // BRANCH_PREDICTOR: enable branch prediction. The branch predictor consists
 // of a single BTB entry which is allocated on a taken backward branch, and
 // cleared on a mispredicted nontaken branch, a fence.i or a trap. Successful
 // prediction eliminates the 1-cyle fetch bubble on a taken branch, usually
 // making tight loops faster.
-parameter BRANCH_PREDICTOR    = 0,
+parameter BRANCH_PREDICTOR    = 1,
 
 // MTVEC_WMASK: Mask of which bits in mtvec are writable. Full writability is
 // recommended, because a common idiom in setup code is to set mtvec just

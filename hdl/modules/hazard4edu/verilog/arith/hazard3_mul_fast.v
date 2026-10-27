@@ -1,6 +1,11 @@
 /*****************************************************************************\
 |                      Copyright (C) 2021-2022 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                     Modified 2026 by Theo Kluter                            |
+|                     Changes:                                                |
+|                       - Moved to active high reset                          |
+|                       - Moved to synchronous reset                          |
 \*****************************************************************************/
 
 // MUL-only (cfg: MUL_FAST) and MUL/MULH/MULHU/MULHSU (cfg: MUL_FAST &&
@@ -16,7 +21,7 @@ module hazard3_mul_fast #(
 `include "hazard3_width_const.vh"
 ) (
 	input  wire               clk,
-	input  wire               rst_n,
+	input  wire               rst,
 
 	input  wire [W_MULOP-1:0] op,
 	input  wire               op_vld,
@@ -41,8 +46,8 @@ end endgenerate
 //synthesis translate_on
 
 // Latency of 1:
-always @ (posedge clk or negedge rst_n) begin
-	if (!rst_n) begin
+always @ (posedge clk) begin
+	if (rst) begin
 		result_vld <= 1'b0;
 	end else begin
 		result_vld <= op_vld;
