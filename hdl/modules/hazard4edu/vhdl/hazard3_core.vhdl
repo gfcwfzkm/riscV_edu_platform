@@ -741,6 +741,7 @@ begin
                x_stall_on_raw or
                x_stall_on_fence or
                x_stall_muldiv or
+               x_stall_ci or
                (bus_aph_req_d and not bus_aph_ready_d) or
                (x_jump_req and not f_jump_rdy);
 

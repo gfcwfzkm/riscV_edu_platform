@@ -83,7 +83,7 @@ entity hazard3_decode is
         d_lspair_offset         : out std_logic_vector(ADDRESS_WIDTH_C - 1 downto 0);
         d_fence_i               : out std_logic;
         d_fence_d               : out std_logic;
-        d_is_ci                 : out std_logic;
+        d_is_ci                 : out std_logic
     );
 end entity;
 
