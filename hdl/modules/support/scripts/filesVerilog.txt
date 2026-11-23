@@ -1,4 +1,4 @@
 verilog/synchroFlop.v
 verilog/sramLutRam.v
-verilog/singlePortBlockram.v
+verilog/singlePortBlockRam.v
 

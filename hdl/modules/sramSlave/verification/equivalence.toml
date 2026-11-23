@@ -1,0 +1,31 @@
+# Equivalence checks of the sramSlave module: the VHDL (vhdl/) against the verilog reference (verilog/).
+# Run with ./run.py, see verification/README.md in the repository root for the format.
+#
+# The memory is reduced to 64 bytes (16 words per byte lane) to keep the SAT problem small; the
+# address decoding, state machine (single, burst, error) and byte enables do not depend on the size.
+
+# Include the verilog folder path as the verilog RTL files include themself various configuration / header files.
+[module]
+include = ["verilog"]
+
+[filesets.singlePortBlockRam]
+vhdl    = ["../../support/vhdl/singlePortBlockRam.vhdl"]
+verilog = ["../../support/verilog/singlePortBlockRam.v"]
+
+[filesets.sramSlave]
+use     = ["singlePortBlockRam"]
+vhdl    = ["sramSlave.vhdl"]
+verilog = ["sramSlave.v"]
+
+
+# No blackbox variant: blackboxed instances are compared port by port, and the Verilog
+# singlePortBlockRam has mixed-case port names (dataOut, writeEnable) while GHDL's netlist has them
+# in lower case, so gold and gate ports cannot be paired (see "Blackboxed instances" in
+# verification/README.md). The full check covers the RAMs, so it also compares their clocking.
+[[test]]
+name  = "sramSlave"
+use   = ["sramSlave"]
+sat_cycles = 12
+reset = { RST_I = [1, 0] }
+[test.basic]
+nrOfEntriesInBytes = 64
