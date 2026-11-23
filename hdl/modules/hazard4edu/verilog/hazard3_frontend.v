@@ -784,9 +784,9 @@ always @ (*) begin
 	endcase
 
 	casez ({|EXTENSION_C, next_instr})
-	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BEQZ}: predecode_rs2_fine = 5'd0;    // -> beq rs1, x0, label
-	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BNEZ}: predecode_rs2_fine = 5'd0;    // -> bne rs1, x0, label
-	default:                                     predecode_rs2_fine = predecode_rs2_coarse;
+	{1'b1, 16'hzzzz, `RVOPC_C_BEQZ}: predecode_rs2_fine = 5'd0;    // -> beq rs1, x0, label
+	{1'b1, 16'hzzzz, `RVOPC_C_BNEZ}: predecode_rs2_fine = 5'd0;    // -> bne rs1, x0, label
+	default:                         predecode_rs2_fine = predecode_rs2_coarse;
 	endcase
 
 end

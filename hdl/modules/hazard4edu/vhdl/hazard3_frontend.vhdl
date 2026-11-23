@@ -830,11 +830,14 @@ begin
                 v_rs1_fine := v_rs1_coarse;
         end case?;
 
-        -- Note: the reference Verilog's c.beqz/c.bnez case items are 35 bits wide
-        -- ({1'b1, 1'bz, 1'bz, 16'hzzzz, RVOPC_C_BEQZ}) while the selector is only
-        -- 33 bits. The selector is zero-extended, so the leading 1'b1 never matches
-        -- and rs2_fine is always rs2_coarse. Mirrored here for equivalence.
-        v_rs2_fine := v_rs2_coarse;
+        case? to_std_logic(EXTENSION_C) & next_instr is
+            when '1' & "----------------" & OPCODE_C.C_BEQZ =>
+                v_rs2_fine := "00000"; -- -> beq rs1, x0, label
+            when '1' & "----------------" & OPCODE_C.C_BNEZ =>
+                v_rs2_fine := "00000"; -- -> bne rs1, x0, label
+            when others =>
+                v_rs2_fine := v_rs2_coarse;
+        end case?;
         
         -- Drive final signals
         predecode_rs1_coarse <= v_rs1_coarse;
