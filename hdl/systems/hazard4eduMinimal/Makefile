@@ -9,9 +9,9 @@
 #   make timing     show the clock frequency and utilisation reached by place & route
 #   make clean      remove the build folder
 #
-# HDL=verilog (default) builds from verilog/toplevel.v and the modules' Verilog sources,
-# HDL=vhdl builds from vhdl/toplevel.vhdl and the modules' VHDL sources (GHDL synthesizes them
-# to a Verilog netlist for Yosys), e.g.  make HDL=vhdl  /  make HDL=vhdl load
+# HDL=vhdl (default) builds from vhdl/toplevel.vhdl and the modules' VHDL sources 
+# (GHDL synthesizes them to a Verilog netlist for Yosys),
+# HDL=verilog builds from verilog/toplevel.v and the modules' Verilog sources 
 #
 # Tools: Yosys, nextpnr-ecp5, ecppack, openFPGALoader and OpenOCD (and GHDL for HDL=vhdl), e.g.
 # from the OSS CAD Suite. If OSS_CAD_SUITE points to an installation, its bin/ is put in front of PATH.
@@ -25,7 +25,7 @@ ifneq ($(wildcard $(OSS_CAD_SUITE)/bin),)
 export PATH := $(OSS_CAD_SUITE)/bin:$(PATH)
 endif
 
-HDL            ?= verilog
+HDL            ?= vhdl
 GHDL           ?= ghdl
 YOSYS          ?= yosys
 NEXTPNR        ?= nextpnr-ecp5
