@@ -24,6 +24,7 @@ set(LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/src/link.ld)
 add_executable(hello
   src/crt0.S
   src/main.c
+  src/misa.c
   src/uart16550.c
 )
 set_target_properties(hello PROPERTIES SUFFIX ".elf" LINK_DEPENDS ${LINKER_SCRIPT})

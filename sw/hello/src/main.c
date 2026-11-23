@@ -1,8 +1,9 @@
 /* Hello world for hazard4eduMinimal: prints a greeting and then a counter over the UART
  * (115200 baud, 8N1, the board's second FT2232H channel). Characters received on the UART
- * are echoed back. */
+ * are echoed back. At start-up the misa CSR is read and decoded (misa.c). */
 #include <stdint.h>
 
+#include "misa.h"
 #include "uart16550.h"
 
 #define BAUD 115200u
@@ -27,20 +28,11 @@ static void delay_cycles(uint32_t cycles)
     }
 }
 
-static uint32_t read_misa(void)
-{
-    uint32_t misa;
-    __asm__ volatile("csrr %0, misa" : "=r"(misa));
-    return misa;
-}
-
 int main(void)
 {
     uart_init(BAUD);
-    uart_puts("\nHello from hazard4eduMinimal (Hazard3 RV32IM)!\n");
-    uart_puts("misa = ");
-    uart_put_hex(read_misa());
-    uart_puts("\n");
+    uart_puts("\nHello from hazard4eduMinimal (Hazard3)!\n");
+    misa_print(misa_read());
 
     for (;;) {
         counter++;
