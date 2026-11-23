@@ -433,6 +433,7 @@ reg                  xm_delay_irq_entry_on_ls_stagex;
 // Custom Instruction (supports combinational and multi-cycle custom instructions)
 
 reg  ci_posted;
+reg  x_stall_on_raw; // read-after-write stall, assigned in the stall logic further down
 wire ci_op_vld  = d_is_ci && !(x_stall_on_raw || ci_posted);
 wire x_stall_ci = d_is_ci && !ci_posted;
 
@@ -514,8 +515,7 @@ wire m_generating_result =
 	(|EXTENSION_A && xm_memop == MEMOP_SC_W) || // sc.w success result is data phase
 	(|EXTENSION_M && m_fast_mul_result_vld);
 
-reg x_stall_on_raw;
-
+// x_stall_on_raw is declared with the custom instruction logic above, which uses it
 always @ (*) begin
 	x_stall_on_raw = 1'b0;
 	if (REDUCED_BYPASS) begin
