@@ -1,39 +1,21 @@
 #include "uart16550.h"
 
-/* Byte registers (the UART only supports byte access) */
-#define UART_REG(offset) (*(volatile uint8_t *)(UART16550_BASE + (offset)))
-#define UART_RBR UART_REG(0)    /* read,  LCR.DLAB = 0: receive buffer */
-#define UART_THR UART_REG(0)    /* write, LCR.DLAB = 0: transmit holding register */
-#define UART_DLL UART_REG(0)    /* LCR.DLAB = 1: divisor low byte */
-#define UART_DLM UART_REG(1)    /* LCR.DLAB = 1: divisor high byte */
-#define UART_FCR UART_REG(2)    /* write: FIFO control */
-#define UART_LCR UART_REG(3)    /* line control */
-#define UART_LSR UART_REG(5)    /* line status */
-
-#define LCR_8N1  0x03u
-#define LCR_DLAB 0x80u
-#define FCR_CLEAR_FIFOS 0x06u   /* reset the receive and transmit FIFOs */
-#define LSR_DR   0x01u          /* receive data ready */
-#define LSR_THRE 0x20u          /* transmit FIFO empty */
-#define LSR_TEMT 0x40u          /* transmitter empty */
-
 void uart_init(uint32_t baud)
 {
-    /* divisor = clock / (16 * baud), rounded: 27 for 115200 baud at 50 MHz */
-    uint32_t divisor = (UART16550_CLK_HZ + 8u * baud) / (16u * baud);
+    uint32_t divisor = UART16550_BAUD_DIVISOR(UART16550_CLK_HZ, baud);
 
-    UART_LCR = LCR_DLAB;
-    UART_DLL = (uint8_t)(divisor & 0xffu);
-    UART_DLM = (uint8_t)(divisor >> 8);
-    UART_LCR = LCR_8N1;
-    UART_FCR = FCR_CLEAR_FIFOS;
+    UART0.LCR = UART_DLAB_bm;                           /* DLL/DLM instead of RBR/THR and IER */
+    UART0.DLL = (uint8_t)(divisor & 0xffu);
+    UART0.DLM = (uint8_t)(divisor >> 8);
+    UART0.LCR = UART_WLS_8BIT_gc | UART_PMODE_DISABLED_gc;   /* 8N1, DLAB = 0 */
+    UART0.FCR = UART_FIFOEN_bm | UART_RXFIFORST_bm | UART_TXFIFORST_bm | UART_RXTRIG_1BYTE_gc;
 }
 
 void uart_putc(char c)
 {
-    while ((UART_LSR & LSR_THRE) == 0u) {
+    while ((UART0.LSR & UART_THRE_bm) == 0u) {
     }
-    UART_THR = (uint8_t)c;
+    UART0.THR = (uint8_t)c;
 }
 
 void uart_puts(const char *s)
@@ -70,14 +52,14 @@ void uart_put_dec(uint32_t value)
 
 int uart_getc_nonblocking(void)
 {
-    if ((UART_LSR & LSR_DR) == 0u) {
+    if ((UART0.LSR & UART_DR_bm) == 0u) {
         return -1;
     }
-    return UART_RBR;
+    return UART0.RBR;
 }
 
 void uart_flush(void)
 {
-    while ((UART_LSR & LSR_TEMT) == 0u) {
+    while ((UART0.LSR & UART_TEMT_bm) == 0u) {
     }
 }
