@@ -1,0 +1,5 @@
+support
+debug
+hazard4edu
+sramSlave
+uart
