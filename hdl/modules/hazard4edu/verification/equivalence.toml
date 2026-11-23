@@ -633,3 +633,50 @@ U_MODE        = true
 PMP_REGIONS   = 2
 # hazard3_config.vh defaults (8 IRQs)
 [[test.extensive.configs]]
+
+# =============================================================================
+# |                       WISHBONE VARIANT OF THE CPU                         |
+# =============================================================================
+
+[filesets.wb_master]
+vhdl    = ["hazard3_wb_master.vhdl"]
+verilog = ["hazard3_wb_master.v"]
+
+[filesets.cpu_2port_wb]
+use     = ["core", "wb_master"]
+vhdl    = ["hazard3_cpu_2port_wb.vhdl"]
+verilog = ["hazard3_cpu_2port_wb.v"]
+
+# Wishbone B4 classic master for one core bus port: registered address/control, two-cycle AHB error
+# response emulation towards the core. Small enough to need no configurations beyond the defaults.
+[[test]]
+name = "hazard3_wb_master"
+use  = ["wb_master"]
+
+# Two hazard3_wb_master instances around the core (blackboxed, so only the wiring and the tie-offs
+# are proven), mirroring the hazard3_cpu_2port test configurations.
+[[test]]
+name               = "hazard3_cpu_2port_wb"
+use                = ["cpu_2port_wb"]
+generic_map        = { NUMBER_OF_IRQs = "NUM_IRQS", IRQ_INPUTREG_BYPASS = "IRQ_INPUT_BYPASS" }
+blackbox_instances = ["core"]
+[test.basic]
+CSR_COUNTER         = false
+DEBUG_SUPPORT       = false
+BREAKPOINT_TRIGGERS = 0
+NUMBER_OF_IRQs      = 1
+IRQ_INPUTREG_BYPASS = [false]
+MULDIV_UNROLL       = 1
+MUL_FAST            = false
+MUL_FASTER          = false
+MULH_FAST           = false
+BRANCH_PREDICTOR    = false
+[[test.extensive.configs]]
+NUMBER_OF_IRQs      = 3
+IRQ_INPUTREG_BYPASS = [false, true, false]
+[[test.extensive.configs]]
+DEBUG_SUPPORT = true
+U_MODE        = true
+PMP_REGIONS   = 2
+# hazard3_config.vh defaults (8 IRQs)
+[[test.extensive.configs]]
