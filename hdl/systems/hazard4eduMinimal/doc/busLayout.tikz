@@ -1,0 +1,43 @@
+% Important: If latex complains about unicode characters,
+% please use "\usepackage[utf8x]{inputenc}" in your preamble
+% You can change the size of the picture by putting it into the construct:
+% 1) \resizebox{10cm}{!}{"below picture"} to scale horizontally to 10 cm
+% 2) \resizebox{!}{15cm}{"below picture"} to scale vertically to 15 cm
+% 3) \resizebox{10cm}{15cm}{"below picture"} a combination of above two
+% It is not recomended to use the scale option of the tikzpicture environment.
+\begin{tikzpicture}[x=1pt,y=-1pt,line cap=rect]
+\def\logisimfontA#1{\textsf{#1}}
+\def\logisimfontB#1{\texttt{#1}}
+\definecolor{custcol_FFFFFF}{HTML}{FFFFFF}
+\definecolor{custcol_FFFF00}{HTML}{FFFF00}
+\definecolor{custcol_000000}{HTML}{000000}
+\definecolor{custcol_0000FF}{HTML}{0000FF}
+\definecolor{custcol_808080}{HTML}{808080}
+\fill [line width=1pt, custcol_FFFFFF] (0,0) rectangle (579,565);
+\fill [line width=1pt, custcol_0000FF] (10,10) rectangle (110,50);
+\draw [line width=1pt, custcol_000000] (10,10) rectangle (110,50);
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (36,22) {debugIf};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (22,39) {Priority: 0};}
+\fill [line width=1pt, custcol_000000] (110,28) rectangle (130,32);
+\fill [line width=1pt, custcol_0000FF] (10,60) rectangle (110,100);
+\draw [line width=1pt, custcol_000000] (10,60) rectangle (110,100);
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (36,72) {cpuData};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (22,89) {Priority: 1};}
+\fill [line width=1pt, custcol_000000] (110,78) rectangle (130,82);
+\fill [line width=1pt, custcol_0000FF] (10,110) rectangle (110,150);
+\draw [line width=1pt, custcol_000000] (10,110) rectangle (110,150);
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (32,122) {cpuInstr};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (22,139) {Priority: 2};}
+\fill [line width=1pt, custcol_000000] (110,128) rectangle (130,132);
+\fill [line width=1pt, custcol_808080] (150,10) rectangle (330,80);
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (209,35) {sramSlave};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (160,52) {0x00000000 - 0x0000FFFF};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (209,69) {64 kbytes};}
+\fill [line width=1pt, custcol_000000] (130,43) rectangle (150,47);
+\fill [line width=1pt, custcol_808080] (150,90) rectangle (330,160);
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (216,115) {uartBus};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (160,132) {0x00010000 - 0x00010007};}
+\logisimfontB{\fontsize{12pt}{12pt}\selectfont\node[inner sep=0, outer sep=0, custcol_FFFF00, anchor=base west] at (216,149) {8 bytes};}
+\fill [line width=1pt, custcol_000000] (130,123) rectangle (150,127);
+\fill [line width=1pt, custcol_000000] (128,28) rectangle (132,132);
+\end{tikzpicture}
