@@ -1,7 +1,7 @@
 # Build and load the hazard4eduMinimal SoC (Hazard3 + JTAG debug + SRAM + UART)
 # on the GECKO5Education board (Lattice ECP5 LFE5U-85, CABGA381).
 #
-#   make            synthesize, place & route and pack the bitstream (build/hazard4eduMinimal.bit)
+#   make            synthesize, place & route and pack the bitstream (build/<HDL>/hazard4eduMinimal.bit)
 #   make load       load the bitstream into the FPGA's configuration SRAM (lost at power-off)
 #   make flash      write the bitstream to the board's SPI flash (persistent)
 #   make openocd    start OpenOCD on the board's JTAG port (gdb :3333, telnet :4444)
@@ -9,17 +9,24 @@
 #   make timing     show the clock frequency and utilisation reached by place & route
 #   make clean      remove the build folder
 #
-# Tools: Yosys, nextpnr-ecp5, ecppack, openFPGALoader and OpenOCD, e.g. from the OSS CAD Suite.
-# If OSS_CAD_SUITE points to an installation, its bin/ is put in front of PATH.
+# HDL=verilog (default) builds from verilog/toplevel.v and the modules' Verilog sources,
+# HDL=vhdl builds from vhdl/toplevel.vhdl and the modules' VHDL sources (GHDL synthesizes them
+# to a Verilog netlist for Yosys), e.g.  make HDL=vhdl  /  make HDL=vhdl load
+#
+# Tools: Yosys, nextpnr-ecp5, ecppack, openFPGALoader and OpenOCD (and GHDL for HDL=vhdl), e.g.
+# from the OSS CAD Suite. If OSS_CAD_SUITE points to an installation, its bin/ is put in front of PATH.
 #
 # The source files are collected like hdl/systems/createScripts does it: scripts/modules.txt lists
-# the modules, and each module's scripts/filesVerilog.txt lists its Verilog files.
+# the modules, and each module's scripts/filesVerilog.txt / scripts/filesVhdl.txt lists its
+# Verilog / VHDL files in dependency order.
 
 OSS_CAD_SUITE ?= /opt/oss-cad-suite
 ifneq ($(wildcard $(OSS_CAD_SUITE)/bin),)
 export PATH := $(OSS_CAD_SUITE)/bin:$(PATH)
 endif
 
+HDL            ?= verilog
+GHDL           ?= ghdl
 YOSYS          ?= yosys
 NEXTPNR        ?= nextpnr-ecp5
 ECPPACK        ?= ecppack
@@ -27,8 +34,8 @@ OPENFPGALOADER ?= openFPGALoader
 OPENOCD        ?= openocd
 
 TOP      := hazard4eduMinimal
-BUILD    := build
-LPF      := scripts/gecko5.lpf
+BUILD    := build/$(HDL)
+LPF     := scripts/gecko5.lpf
 OCD_CFG  := openocd/gecko5-hazard3.cfg
 
 # FPGA: LFE5U-85F in the CABGA381 package; the board clock is 50 MHz
@@ -40,11 +47,18 @@ JOBS          ?= $(shell nproc 2>/dev/null || echo 4)
 # ---------------------------------------------------------------------------- sources
 MODULES_DIR := ../../modules
 MODULES     := $(strip $(shell cat scripts/modules.txt))
-MODULE_SRCS := $(foreach m,$(MODULES),$(addprefix $(MODULES_DIR)/$(m)/,$(strip $(shell cat $(MODULES_DIR)/$(m)/scripts/filesVerilog.txt))))
-SYSTEM_SRCS := verilog/wishBoneSharedBusTop.v verilog/toplevel.v
-SRCS        := $(MODULE_SRCS) $(SYSTEM_SRCS)
+module_files = $(foreach m,$(MODULES),$(addprefix $(MODULES_DIR)/$(m)/,$(strip $(shell cat $(MODULES_DIR)/$(m)/scripts/$(1)))))
+
+ifeq ($(HDL),verilog)
+SRCS     := $(call module_files,filesVerilog.txt) verilog/wishBoneSharedBusTop.v verilog/toplevel.v
 # Hazard3 includes its configuration headers (*.vh) from its verilog folder
-INCLUDES    := $(foreach m,$(MODULES),-I$(MODULES_DIR)/$(m)/verilog)
+INCLUDES := $(foreach m,$(MODULES),-I$(MODULES_DIR)/$(m)/verilog)
+else ifeq ($(HDL),vhdl)
+SRCS     := $(call module_files,filesVhdl.txt) vhdl/wishBoneSharedBusTop.vhdl vhdl/toplevel.vhdl
+GHDL_WORK := $(BUILD)/ghdl-work
+else
+$(error HDL must be 'verilog' or 'vhdl', not '$(HDL)')
+endif
 
 # ---------------------------------------------------------------------------- programmer
 # Several FT2232 probes may be connected. The GECKO5Education's FT2232H reports the product string
@@ -68,8 +82,19 @@ bit: $(BUILD)/$(TOP).bit
 $(BUILD):
 	mkdir -p $@
 
+ifeq ($(HDL),verilog)
 $(BUILD)/$(TOP).json: $(SRCS) scripts/modules.txt | $(BUILD)
 	$(YOSYS) -l $(BUILD)/yosys.log -q -p "read_verilog -sv $(INCLUDES) $(SRCS); synth_ecp5 -top $(TOP) -json $@"
+else
+# GHDL analyses the VHDL sources in order and writes a Verilog netlist of the design, which Yosys
+# then maps to the ECP5 (the JTAGG primitive stays a black box until synth_ecp5 maps it).
+$(BUILD)/$(TOP).json: $(SRCS) scripts/modules.txt | $(BUILD)
+	mkdir -p $(GHDL_WORK)
+	$(GHDL) -a --std=08 --workdir=$(GHDL_WORK) $(SRCS)
+	$(GHDL) --synth --std=08 --workdir=$(GHDL_WORK) --out=verilog $(TOP) > $(BUILD)/$(TOP).ghdl.v 2> $(BUILD)/ghdl.log \
+	  || { cat $(BUILD)/ghdl.log; exit 1; }
+	$(YOSYS) -l $(BUILD)/yosys.log -q -p "read_verilog $(BUILD)/$(TOP).ghdl.v; synth_ecp5 -top $(TOP) -json $@"
+endif
 
 $(BUILD)/$(TOP).config: $(BUILD)/$(TOP).json $(LPF)
 	$(NEXTPNR) $(DEVICE) --freq $(FREQ_MHZ) --threads $(JOBS) $(NEXTPNR_FLAGS) \

@@ -1,0 +1,6 @@
+vhdl/uartTxFifo.vhdl
+vhdl/uartRxFifo.vhdl
+vhdl/baudGenerator.vhdl
+vhdl/uartTx.vhdl
+vhdl/uartRx.vhdl
+vhdl/uartBus.vhdl

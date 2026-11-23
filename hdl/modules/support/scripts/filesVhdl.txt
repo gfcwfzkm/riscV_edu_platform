@@ -1,0 +1,3 @@
+vhdl/synchroflop.vhdl
+vhdl/sramLutram.vhdl
+vhdl/singlePortBlockram.vhdl

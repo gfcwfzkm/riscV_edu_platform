@@ -1,0 +1,49 @@
+{
+  // Debug hello.elf on the hazard4eduMinimal SoC over the GECKO5Education's JTAG port.
+  // Requirements: the bitstream is loaded (task "load bitstream (FPGA SRAM)" or `make load`),
+  // and a gdb that knows RISC-V (see README.md; set "miDebuggerPath" / "gdbPath" below).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Microsoft C/C++ extension (ms-vscode.cpptools). The "openocd" task builds the program
+      // and starts OpenOCD in the background; it is stopped again when the session ends.
+      "name": "Hazard3 (OpenOCD + gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/hello.elf",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "preLaunchTask": "openocd",
+      "postDebugTask": "stop openocd",
+      "customLaunchSetupCommands": [
+        { "text": "-file-exec-and-symbols ${workspaceFolder}/build/hello.elf" },
+        { "text": "-target-select extended-remote localhost:3333" },
+        { "text": "monitor reset halt" },
+        { "text": "-target-download" },
+        { "text": "-break-insert -t main" }
+      ],
+      "launchCompleteCommand": "exec-continue",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "filterStderr": true
+    },
+    {
+      // Cortex-Debug (marus25.cortex-debug) starts OpenOCD itself. The OpenOCD path comes from the
+      // setting cortex-debug.openocdPath (.vscode/settings.json), the gdb from "gdbPath".
+      "name": "Hazard3 (Cortex-Debug)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/hello.elf",
+      "configFiles": ["${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/gecko5-hazard3.cfg"],
+      "gdbPath": "gdb",
+      "preLaunchTask": "build",
+      "overrideLaunchCommands": ["monitor reset halt", "-target-download"],
+      "overrideRestartCommands": ["monitor reset halt", "-target-download"],
+      "overrideResetCommands": ["monitor reset halt", "-target-download"],
+      "runToEntryPoint": "main"
+    }
+  ]
+}

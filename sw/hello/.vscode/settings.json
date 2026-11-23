@@ -1,0 +1,7 @@
+{
+  // OpenOCD from the OSS CAD Suite (used by Cortex-Debug; the cppdbg configuration goes through the SoC Makefile)
+  "cortex-debug.openocdPath": "/opt/oss-cad-suite/bin/openocd",
+  "cmake.useCMakePresets": "always",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json"
+}

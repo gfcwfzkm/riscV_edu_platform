@@ -1,0 +1,7 @@
+vhdl/hazard3_reset_sync.vhdl
+vhdl/hazard3_sync_1bit.vhdl
+vhdl/hazard3_apb_async_bridge.vhdl
+vhdl/hazard3_dm.vhdl
+vhdl/hazard3_jtag_dtm_core.vhdl
+vhdl/hazard3_ecp5_jtag_dtm.vhdl
+vhdl/debugTop.vhdl

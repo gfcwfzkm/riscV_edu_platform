@@ -1,0 +1,57 @@
+{
+  // Open the folder sw/hello in VS Code. OpenOCD is started through the SoC's Makefile, which
+  // finds the OSS CAD Suite in /opt/oss-cad-suite (or OSS_CAD_SUITE) and selects the GECKO5's FT2232H.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake configure",
+      "type": "shell",
+      "command": "cmake --preset rv32im",
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "test -f build/CMakeCache.txt || cmake --preset rv32im; cmake --build build",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "run on board (JTAG load + start)",
+      "type": "shell",
+      "command": "make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal run ELF=${workspaceFolder}/build/hello.elf",
+      "dependsOn": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "load bitstream (FPGA SRAM)",
+      "type": "shell",
+      "command": "make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal load",
+      "problemMatcher": []
+    },
+    {
+      // Background task for the "Hazard3 (OpenOCD + gdb)" launch configuration: VS Code waits until
+      // OpenOCD listens for gdb, then starts the debugger.
+      "label": "openocd",
+      "type": "shell",
+      "command": "make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal openocd",
+      "dependsOn": "build",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "openocd",
+        "pattern": { "regexp": "^(Error):\\s+(.*)$", "severity": 1, "message": 2 },
+        "background": {
+          "activeBegin": true,
+          "beginsPattern": "^Open On-Chip Debugger",
+          "endsPattern": "Listening on port 3333 for gdb connections"
+        }
+      }
+    },
+    {
+      "label": "stop openocd",
+      "type": "shell",
+      "command": "pkill -TERM -f '[o]penocd -f openocd/gecko5-hazard3.cfg' || true",
+      "problemMatcher": []
+    }
+  ]
+}
