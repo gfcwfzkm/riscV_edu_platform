@@ -48,6 +48,15 @@
       }
     },
     {
+      // The board's UART in minicom (115200 8N1), in its own terminal tab. Quit with Ctrl+A X;
+      // the port can be changed with UART_DEV, see the SoC's Makefile.
+      "label": "uart console",
+      "type": "shell",
+      "command": "make -s --no-print-directory -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal console",
+      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated", "clear": true, "echo": false },
+      "problemMatcher": []
+    },
+    {
       "label": "stop openocd",
       "type": "shell",
       "command": "pkill -TERM -f '[o]penocd -f openocd/gecko5-hazard3.cfg' || true",

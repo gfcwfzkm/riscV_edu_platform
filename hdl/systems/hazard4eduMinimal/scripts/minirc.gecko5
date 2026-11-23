@@ -1,0 +1,12 @@
+# minicom settings for the GECKO5Education UART (FT2232H channel B), used by 'make console'.
+# 115200 8N1 matches the firmware examples (divisor 27 at 50 MHz); the board has no RTS/CTS wiring,
+# so hardware flow control is off. The device comes from 'make console' (-D), not from here.
+pu baudrate         115200
+pu bits             8
+pu parity           N
+pu stopbits         1
+pu rtscts           No
+pu xonxoff          No
+pu minit
+pu mreset
+pu mhangup

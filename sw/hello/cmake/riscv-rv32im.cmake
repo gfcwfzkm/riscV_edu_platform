@@ -7,8 +7,8 @@
 #   gcc   riscv*-elf-gcc; RISCV_GCC_PREFIX can name it, e.g. -DRISCV_GCC_PREFIX=riscv64-unknown-elf-
 #   clang clang --target=riscv32-unknown-elf with ld.lld and llvm-objcopy (no libc, no runtime library)
 #
-# The C extension stays off: hazard4edu has an open predecode bug with c.beqz / c.bnez
-# (hdl/modules/hazard4edu/doc/NOTES.md), so -march must not contain "c".
+# The C extension stays off: hazard4eduMinimal is built without it (with C the core does not reach
+# 50 MHz, see hdl/systems/hazard4eduMinimal/README.md), so -march must not contain "c".
 
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR riscv32)

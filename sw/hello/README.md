@@ -13,8 +13,8 @@ Bare-metal hello world for the [hazard4eduMinimal](../../hdl/systems/hazard4eduM
 | `src/main.c`              | the program                                                                     |
 | `.vscode/`                | build tasks and two debug configurations (open this folder in VS Code)          |
 
-**No compressed instructions:** the SoC is built without the C extension because of an open predecode bug in
-the core (`hdl/modules/hazard4edu/doc/NOTES.md`). The toolchain file refuses a `-march` with `c`.
+**No compressed instructions:** the SoC is built without the C extension, because with it the core does not
+reach 50 MHz (see `hdl/systems/hazard4eduMinimal/README.md`). The toolchain file refuses a `-march` with `c`.
 
 ## Toolchain
 
@@ -40,8 +40,9 @@ task *load bitstream (FPGA SRAM)*). Then:
 cmake --build build --target run    # = make -C ../../hdl/systems/hazard4eduMinimal run ELF=build/hello.elf
 ```
 
-Output: the board's second FT2232H channel (the second `ttyUSB` of the `Dual RS232-HS` device), 115200 8N1,
-e.g. `picocom -b 115200 /dev/ttyUSB3`.
+Output: the board's second FT2232H channel (the second `ttyUSB` of the `Dual RS232-HS` device), 115200 8N1.
+`make -C ../../hdl/systems/hazard4eduMinimal console` opens it in minicom (quit with Ctrl+A X); in VS Code
+the task **uart console** does the same in its own terminal tab.
 
 ## Debugging in VS Code
 

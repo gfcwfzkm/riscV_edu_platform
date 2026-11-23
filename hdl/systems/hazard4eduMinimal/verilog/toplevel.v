@@ -156,8 +156,8 @@ module hazard4eduMinimal
   assign s_debugIf_BTE_O  = 2'd0;
 
   hazard3_cpu_2port_wb #(
-    // EXTENSION_C is off on purpose: compressed branches are affected by an open
-    // predecode issue, see hdl/modules/hazard4edu/doc/NOTES.md (section 1).
+    // EXTENSION_C is off for timing: with C the core only reaches about 41-45 MHz on a
+    // speed grade 6 ECP5. Turn it on only with a lower clock.
     // EXTENSION_A and EXTENSION_XH3IRQ are off for timing: with them the core only just
     // reaches 50 MHz on a speed grade 6 ECP5 (49.7-50.3 MHz depending on the placement
     // seed); without them it reaches about 53-54 MHz. Software targets rv32im.

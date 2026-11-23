@@ -13,9 +13,9 @@ Bus masters: the debug module's system bus access (`debugIf`), the CPU load/stor
 CPU instruction fetch port (`cpuInstr`).
 
 CPU configuration: **RV32IM** + Zicsr, M-mode traps, counters, debug with 2 hardware breakpoints, 1 IRQ
-line (tied low). The C extension is off because of an open issue with compressed branches, see
-`hdl/modules/hazard4edu/doc/NOTES.md`. The A extension and the Xh3irq interrupt controller are off for timing
-(about 54 MHz instead of about 50 MHz on a speed grade 6 part). Build software with
+line (tied low). The C extension, the A extension and the Xh3irq interrupt controller are off for timing on
+a speed grade 6 part: with C the core only reaches about 41-45 MHz, and with A and Xh3irq about 50 MHz,
+instead of about 51-54 MHz without them. Build software with
 `-march=rv32im -mabi=ilp32`.
 
 The RAM is not initialised by the bitstream: programs are loaded over JTAG.
@@ -32,6 +32,7 @@ make load         # configure the FPGA (SRAM, volatile)
 make run ELF=prog.elf   # load a program over JTAG into the SRAM and start it at 0x0
 make flash        # write the bitstream to the SPI flash (persistent)
 make openocd      # OpenOCD server for gdb (:3333) / telnet (:4444), e.g. for VS Code
+make console      # the board's UART in minicom, 115200 8N1 (quit with Ctrl+A X)
 ```
 
 The board is found by its FT2232H product string (`Dual RS232-HS`), so other FT2232 based probes can stay

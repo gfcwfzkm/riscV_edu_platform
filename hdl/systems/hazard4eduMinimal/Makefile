@@ -6,6 +6,7 @@
 #   make flash      write the bitstream to the board's SPI flash (persistent)
 #   make openocd    start OpenOCD on the board's JTAG port (gdb :3333, telnet :4444)
 #   make run ELF=x  load an rv32im ELF into the SRAM over JTAG and start it at the reset vector 0x0
+#   make console    open the board's UART in minicom (115200 8N1, quit with Ctrl+A X)
 #   make timing     show the clock frequency and utilisation reached by place & route
 #   make clean      remove the build folder
 #
@@ -70,10 +71,16 @@ GECKO_BUSDEV ?= $(shell for d in /sys/bus/usb/devices/*; do \
 	  [ "$$(cat $$d/idVendor 2>/dev/null):$$(cat $$d/idProduct 2>/dev/null)" = "0403:6010" ] && \
 	  [ "$$(cat $$d/product 2>/dev/null)" = "$(GECKO_USB_PRODUCT)" ] && \
 	  echo "$$(cat $$d/busnum):$$(cat $$d/devnum)" && break; done)
+# The UART is the FT2232H's second channel (interface 1). The by-id name stays the same however many
+# USB serial adapters are connected; override with e.g. UART_DEV=/dev/ttyUSB3.
+MINICOM   ?= minicom
+UART_DEV  ?= /dev/serial/by-id/usb-FTDI_Dual_RS232-HS-if01-port0
+UART_BAUD ?= 115200
+
 LOADER_FLAGS := -c ft2232 $(if $(GECKO_BUSDEV),--busdev-num $(GECKO_BUSDEV))
 
 # ---------------------------------------------------------------------------- rules
-.PHONY: all bit load flash openocd run timing clean help
+.PHONY: all bit load flash openocd run console timing clean help
 .DELETE_ON_ERROR:
 
 all: bit
@@ -117,6 +124,11 @@ run:
 	@test -n "$(ELF)" || { echo "usage: make run ELF=path/to/program.elf"; exit 2; }
 	$(OPENOCD) -f $(OCD_CFG) -c init -c halt -c "load_image $(ELF)" -c "verify_image $(ELF)" \
 	  -c "reg pc 0" -c resume -c shutdown
+
+# scripts/minirc.gecko5 sets 8N1 without flow control; -D and -b override its port and baud rate
+console:
+	@test -e $(UART_DEV) || { echo "UART $(UART_DEV) not found: is the board connected? Set UART_DEV=/dev/ttyUSBn to choose another port."; exit 1; }
+	$(MINICOM) -D $(UART_DEV) -b $(UART_BAUD) $(CURDIR)/scripts/minirc.gecko5
 
 timing:
 	@grep -E 'Max frequency for clock' $(BUILD)/nextpnr.log | tail -n 1 || echo "run 'make' first"
