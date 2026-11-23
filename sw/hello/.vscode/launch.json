@@ -14,14 +14,23 @@
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
+      // The C/C++ debug adapter only knows x86, x64, arm, arm64 and mips; gdb's "riscv:rv32" makes
+      // it fail with "Specified argument was out of the range of valid values. (Parameter 'arch')".
+      // "arm" is used only for its 32-bit pointer size; gdb itself still debugs RISC-V.
+      "targetArchitecture": "arm",
       "preLaunchTask": "openocd",
       "postDebugTask": "stop openocd",
+      // Set breakpoints in the editor (e.g. in main): breakpoints inserted by raw gdb commands here
+      // are unknown to the adapter and would be reported as an exception.
+      // The tdesc file lists only the registers this core implements: OpenOCD also describes many it
+      // does not (vcsr, seed, ...), and the register view then fails with "Could not fetch register".
+      // Regenerate it with `make -C ../../hdl/systems/hazard4eduMinimal gdb-tdesc`.
       "customLaunchSetupCommands": [
+        { "text": "-gdb-set tdesc filename ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/hazard4eduMinimal-tdesc.xml" },
         { "text": "-file-exec-and-symbols ${workspaceFolder}/build/hello.elf" },
         { "text": "-target-select extended-remote localhost:3333" },
         { "text": "monitor reset halt" },
-        { "text": "-target-download" },
-        { "text": "-break-insert -t main" }
+        { "text": "-target-download" }
       ],
       "launchCompleteCommand": "exec-continue",
       "stopAtEntry": false,
@@ -38,7 +47,18 @@
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/build/hello.elf",
       "configFiles": ["${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/gecko5-hazard3.cfg"],
+      // Tool paths are set here rather than in settings.json, which is not read when another folder
+      // (e.g. the repository root) is open: without them Cortex-Debug fails with "spawn openocd ENOENT".
+      "serverpath": "/opt/oss-cad-suite/bin/openocd",
       "gdbPath": "gdb",
+      // Same register list as above; -ex runs before Cortex-Debug connects to OpenOCD
+      "debuggerArgs": ["-ex", "set tdesc filename ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/hazard4eduMinimal-tdesc.xml"],
+      // objdump/nm find globals and statics; the default arm-none-eabi- tools are not installed.
+      // Cortex-Debug derives nm from this path (llvm-objdump -> llvm-nm).
+      "objdumpPath": "llvm-objdump",
+      // Peripheral registers (UART0) for the XPERIPHERALS view (mcu-debug.peripheral-viewer). Note that
+      // the view reads RBR, IIR and LSR at every stop, which has side effects (see the SVD file).
+      "svdPath": "${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/hazard4eduMinimal.svd",
       "preLaunchTask": "build",
       "overrideLaunchCommands": ["monitor reset halt", "-target-download"],
       "overrideRestartCommands": ["monitor reset halt", "-target-download"],

@@ -51,10 +51,20 @@ Open `sw/hello` as the workspace folder. Extensions: *C/C++* (`ms-vscode.cpptool
 
 * **Hazard3 (OpenOCD + gdb)** (`cppdbg`): the `openocd` task builds the program and starts
   `make -C ../../hdl/systems/hazard4eduMinimal openocd` in the background. gdb then connects with
-  `target extended-remote localhost:3333`, does `monitor reset halt`, loads the ELF and stops at `main`.
-  OpenOCD is stopped again when the session ends.
-* **Hazard3 (Cortex-Debug)**: Cortex-Debug starts OpenOCD itself (path from `cortex-debug.openocdPath` in
-  `.vscode/settings.json`, `/opt/oss-cad-suite/bin/openocd`) with `openocd/gecko5-hazard3.cfg`.
+  `target extended-remote localhost:3333`, does `monitor reset halt`, loads the ELF and runs it; set
+  breakpoints in the editor (e.g. in `main`) before starting. OpenOCD is stopped again when the session
+  ends. The configuration sets `"targetArchitecture": "arm"`: the C/C++ debug adapter does not know RISC-V
+  and otherwise fails with "Specified argument was out of the range of valid values. (Parameter 'arch')".
+* **Hazard3 (Cortex-Debug)**: Cortex-Debug starts OpenOCD itself with `openocd/gecko5-hazard3.cfg`. The
+  launch configuration sets the tool paths itself (`serverpath`: `/opt/oss-cad-suite/bin/openocd`,
+  `objdumpPath`: `llvm-objdump`), so it also works when VS Code has another folder open and does not read
+  `sw/hello/.vscode/settings.json`; without them it fails with "spawn openocd ENOENT". `svdPath` points to
+  `hdl/systems/hazard4eduMinimal/hazard4eduMinimal.svd`, so the XPERIPHERALS view (extension
+  `mcu-debug.peripheral-viewer`) shows the UART registers with their bit fields.
+
+Both load `hdl/systems/hazard4eduMinimal/openocd/hazard4eduMinimal-tdesc.xml` before connecting, so the
+register views only list registers the core implements (otherwise they fail with "Could not fetch register
+"vcsr""); see the SoC's README.
 
 Both need a gdb with RISC-V support. Set `miDebuggerPath` / `gdbPath` in `launch.json` if `gdb` is not
 the right one:

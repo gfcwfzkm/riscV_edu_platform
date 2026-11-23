@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CMSIS-SVD description of the hazard4eduMinimal SoC peripherals, for register views in debuggers
+  (e.g. the XPERIPHERALS view of Cortex-Debug / mcu-debug.peripheral-viewer).
+
+  The register and bit names match sw/hello/src/uart16550.h.
+
+  Reading some UART registers has side effects (marked with readAction): reading RBR takes a byte
+  out of the receive FIFO, reading IIR clears the transmitter-empty interrupt, and reading LSR clears
+  the error bits and the line status interrupt. A peripheral view reads them at every stop of the
+  debugger, so received bytes or error flags can disappear while the view is open.
+-->
+<device schemaVersion="1.3" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd">
+  <vendor>riscV_edu_platform</vendor>
+  <name>hazard4eduMinimal</name>
+  <version>1.0</version>
+  <description>Hazard3 RV32IM with JTAG debug, 64 KiB SRAM at 0x00000000 and a 16550 compatible UART at 0x00010000, on a shared Wishbone bus (GECKO5Education, ECP5 LFE5U-85)</description>
+  <addressUnitBits>8</addressUnitBits>
+  <width>32</width>
+  <size>8</size>
+  <access>read-write</access>
+  <resetValue>0x00</resetValue>
+  <resetMask>0xFF</resetMask>
+
+  <peripherals>
+    <peripheral>
+      <name>UART0</name>
+      <description>16550 compatible UART (hdl/modules/uart): byte registers, 16 byte FIFOs that are always enabled, baud clock 50 MHz (divisor = 50 MHz / (16 * baud))</description>
+      <groupName>UART</groupName>
+      <baseAddress>0x00010000</baseAddress>
+      <addressBlock>
+        <offset>0x0</offset>
+        <size>0x8</size>
+        <usage>registers</usage>
+      </addressBlock>
+      <interrupt>
+        <name>UART0</name>
+        <description>UART interrupt (not connected to the CPU in hazard4eduMinimal)</description>
+        <value>0</value>
+      </interrupt>
+      <registers>
+
+        <!-- 0x00: RBR (read, DLAB = 0) / THR (write, DLAB = 0) / DLL (DLAB = 1) -->
+        <register>
+          <name>RBR</name>
+          <description>Receiver buffer (LCR.DLAB = 0). Reading takes the byte out of the receive FIFO, also when DLAB = 1.</description>
+          <addressOffset>0x0</addressOffset>
+          <access>read-only</access>
+          <readAction>modify</readAction>
+          <fields>
+            <field><name>DATA</name><description>Received byte</description><bitRange>[7:0]</bitRange></field>
+          </fields>
+        </register>
+        <register>
+          <name>THR</name>
+          <description>Transmitter holding register (LCR.DLAB = 0): writing puts a byte into the transmit FIFO</description>
+          <alternateRegister>RBR</alternateRegister>
+          <addressOffset>0x0</addressOffset>
+          <access>write-only</access>
+          <fields>
+            <field><name>DATA</name><description>Byte to send</description><bitRange>[7:0]</bitRange></field>
+          </fields>
+        </register>
+        <register>
+          <name>DLL</name>
+          <description>Divisor latch, low byte (LCR.DLAB = 1). Shows the receiver buffer while DLAB = 0.</description>
+          <alternateRegister>RBR</alternateRegister>
+          <addressOffset>0x0</addressOffset>
+          <readAction>modify</readAction>
+          <fields>
+            <field><name>DLL</name><description>Divisor bits 7:0</description><bitRange>[7:0]</bitRange></field>
+          </fields>
+        </register>
+
+        <!-- 0x01: IER (DLAB = 0) / DLM (DLAB = 1) -->
+        <register>
+          <name>IER</name>
+          <description>Interrupt enable (LCR.DLAB = 0). Only ERBFI and ETBEI are stored.</description>
+          <addressOffset>0x1</addressOffset>
+          <fields>
+            <field><name>ERBFI</name><description>Received data available interrupt enable</description><bitRange>[0:0]</bitRange></field>
+            <field><name>ETBEI</name><description>Transmitter holding register empty interrupt enable</description><bitRange>[1:1]</bitRange></field>
+            <field><name>ELSI</name><description>Receiver line status interrupt enable (not stored by this UART, reads 0)</description><bitRange>[2:2]</bitRange><access>read-only</access></field>
+          </fields>
+        </register>
+        <register>
+          <name>DLM</name>
+          <description>Divisor latch, high byte (LCR.DLAB = 1). Shows IER while DLAB = 0.</description>
+          <alternateRegister>IER</alternateRegister>
+          <addressOffset>0x1</addressOffset>
+          <fields>
+            <field><name>DLM</name><description>Divisor bits 15:8</description><bitRange>[7:0]</bitRange></field>
+          </fields>
+        </register>
+
+        <!-- 0x02: IIR (read) / FCR (write) -->
+        <register>
+          <name>IIR</name>
+          <description>Interrupt identification. Reading clears the transmitter holding register empty interrupt.</description>
+          <addressOffset>0x2</addressOffset>
+          <access>read-only</access>
+          <resetValue>0xC1</resetValue>
+          <readAction>modify</readAction>
+          <fields>
+            <field><name>INTPEND</name><description>0 = an interrupt is pending, 1 = none pending</description><bitRange>[0:0]</bitRange></field>
+            <field>
+              <name>INTID</name><description>Interrupt identification, highest priority first</description><bitRange>[3:1]</bitRange>
+              <enumeratedValues>
+                <enumeratedValue><name>LINESTATUS</name><description>Receiver line status</description><value>3</value></enumeratedValue>
+                <enumeratedValue><name>RXDATA</name><description>Received data available</description><value>2</value></enumeratedValue>
+                <enumeratedValue><name>THRE</name><description>Transmitter holding register empty</description><value>1</value></enumeratedValue>
+                <enumeratedValue><name>MODEM</name><description>Modem status (not implemented)</description><value>0</value></enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field><name>FIFOSTAT</name><description>FIFOs enabled (always 0b11)</description><bitRange>[7:6]</bitRange></field>
+          </fields>
+        </register>
+        <register>
+          <name>FCR</name>
+          <description>FIFO control (write only)</description>
+          <alternateRegister>IIR</alternateRegister>
+          <addressOffset>0x2</addressOffset>
+          <access>write-only</access>
+          <fields>
+            <field><name>FIFOEN</name><description>FIFO enable (FIFOs are always on, no effect)</description><bitRange>[0:0]</bitRange></field>
+            <field><name>RXFIFORST</name><description>Receiver FIFO reset (self-clearing)</description><bitRange>[1:1]</bitRange></field>
+            <field><name>TXFIFORST</name><description>Transmitter FIFO reset (self-clearing)</description><bitRange>[2:2]</bitRange></field>
+            <field><name>DMAMODE</name><description>DMA mode select (no effect)</description><bitRange>[3:3]</bitRange></field>
+            <field>
+              <name>RXTRIG</name><description>Receiver FIFO trigger level for the received data interrupt</description><bitRange>[7:6]</bitRange>
+              <enumeratedValues>
+                <enumeratedValue><name>1BYTE</name><description>1 byte</description><value>0</value></enumeratedValue>
+                <enumeratedValue><name>4BYTES</name><description>4 bytes</description><value>1</value></enumeratedValue>
+                <enumeratedValue><name>8BYTES</name><description>8 bytes</description><value>2</value></enumeratedValue>
+                <enumeratedValue><name>14BYTES</name><description>14 bytes</description><value>3</value></enumeratedValue>
+              </enumeratedValues>
+            </field>
+          </fields>
+        </register>
+
+        <!-- 0x03: LCR -->
+        <register>
+          <name>LCR</name>
+          <description>Line control</description>
+          <addressOffset>0x3</addressOffset>
+          <fields>
+            <field>
+              <name>WLS</name><description>Word length</description><bitRange>[1:0]</bitRange>
+              <enumeratedValues>
+                <enumeratedValue><name>5BIT</name><description>5 data bits</description><value>0</value></enumeratedValue>
+                <enumeratedValue><name>6BIT</name><description>6 data bits</description><value>1</value></enumeratedValue>
+                <enumeratedValue><name>7BIT</name><description>7 data bits</description><value>2</value></enumeratedValue>
+                <enumeratedValue><name>8BIT</name><description>8 data bits</description><value>3</value></enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field><name>STB</name><description>Stop bits: 0 = 1, 1 = 2 (1.5 for 5-bit words)</description><bitRange>[2:2]</bitRange></field>
+            <field><name>PEN</name><description>Parity enable</description><bitRange>[3:3]</bitRange></field>
+            <field><name>EPS</name><description>Even parity select</description><bitRange>[4:4]</bitRange></field>
+            <field><name>SPAR</name><description>Stick parity (with PEN: parity bit = !EPS)</description><bitRange>[5:5]</bitRange></field>
+            <field><name>BC</name><description>Break control: hold TxD low</description><bitRange>[6:6]</bitRange></field>
+            <field><name>DLAB</name><description>Divisor latch access: offsets 0 and 1 address DLL and DLM</description><bitRange>[7:7]</bitRange></field>
+          </fields>
+        </register>
+
+        <!-- 0x04: MCR -->
+        <register>
+          <name>MCR</name>
+          <description>Modem control. Only LOOP is implemented.</description>
+          <addressOffset>0x4</addressOffset>
+          <fields>
+            <field><name>DTR</name><description>Data terminal ready (not implemented)</description><bitRange>[0:0]</bitRange><access>read-only</access></field>
+            <field><name>RTS</name><description>Request to send (not implemented)</description><bitRange>[1:1]</bitRange><access>read-only</access></field>
+            <field><name>OUT1</name><description>Output 1 (not implemented)</description><bitRange>[2:2]</bitRange><access>read-only</access></field>
+            <field><name>OUT2</name><description>Output 2 (not implemented)</description><bitRange>[3:3]</bitRange><access>read-only</access></field>
+            <field><name>LOOP</name><description>Loopback: TxD held high, the transmitter feeds the receiver</description><bitRange>[4:4]</bitRange></field>
+          </fields>
+        </register>
+
+        <!-- 0x05: LSR -->
+        <register>
+          <name>LSR</name>
+          <description>Line status. Reading clears OE, PE, FE, BI and the line status interrupt.</description>
+          <addressOffset>0x5</addressOffset>
+          <access>read-only</access>
+          <resetValue>0x60</resetValue>
+          <readAction>modify</readAction>
+          <fields>
+            <field><name>DR</name><description>Data ready: the receive FIFO holds at least one byte</description><bitRange>[0:0]</bitRange></field>
+            <field><name>OE</name><description>Overrun error</description><bitRange>[1:1]</bitRange></field>
+            <field><name>PE</name><description>Parity error</description><bitRange>[2:2]</bitRange></field>
+            <field><name>FE</name><description>Framing error</description><bitRange>[3:3]</bitRange></field>
+            <field><name>BI</name><description>Break interrupt</description><bitRange>[4:4]</bitRange></field>
+            <field><name>THRE</name><description>Transmitter holding register (FIFO) empty</description><bitRange>[5:5]</bitRange></field>
+            <field><name>TEMT</name><description>Transmitter empty: FIFO and shift register idle</description><bitRange>[6:6]</bitRange></field>
+            <field><name>RXFE</name><description>Error in the receive FIFO</description><bitRange>[7:7]</bitRange></field>
+          </fields>
+        </register>
+
+        <!-- 0x06: MSR -->
+        <register>
+          <name>MSR</name>
+          <description>Modem status (not implemented, reads 0)</description>
+          <addressOffset>0x6</addressOffset>
+          <access>read-only</access>
+        </register>
+
+        <!-- 0x07: SCR -->
+        <register>
+          <name>SCR</name>
+          <description>Scratch register: 8 bits for free use, no effect on the UART</description>
+          <addressOffset>0x7</addressOffset>
+        </register>
+
+      </registers>
+    </peripheral>
+  </peripherals>
+</device>

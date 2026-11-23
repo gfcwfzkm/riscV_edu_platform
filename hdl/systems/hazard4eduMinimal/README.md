@@ -33,6 +33,7 @@ make run ELF=prog.elf   # load a program over JTAG into the SRAM and start it at
 make flash        # write the bitstream to the SPI flash (persistent)
 make openocd      # OpenOCD server for gdb (:3333) / telnet (:4444), e.g. for VS Code
 make console      # the board's UART in minicom, 115200 8N1 (quit with Ctrl+A X)
+make gdb-tdesc    # regenerate openocd/hazard4eduMinimal-tdesc.xml after changing the CPU configuration
 ```
 
 The board is found by its FT2232H product string (`Dual RS232-HS`), so other FT2232 based probes can stay
@@ -48,3 +49,15 @@ reset, and a few UART characters can be lost.
 
 OpenOCD configuration: `openocd/gecko5-hazard3.cfg`. Use it with gdb (`target extended-remote :3333`) or, for
 example, the VS Code Cortex-Debug / native debug extensions with a `riscv32` / `riscv64-unknown-elf` gdb.
+
+OpenOCD describes about 400 registers to gdb, including about 250 CSRs that this core does not implement
+(vector, hypervisor, supervisor, PMP, `seed`, ...). Reading any of them fails ("Could not fetch register
+"vcsr"; remote failure reply '0E'"), and register views that fetch everything at once then show nothing.
+Load `openocd/hazard4eduMinimal-tdesc.xml` in gdb before connecting (`set tdesc filename <file>`): it is
+OpenOCD's description without the unreadable registers, with the same register numbers. `make gdb-tdesc`
+regenerates it from the running SoC (bitstream loaded, no other OpenOCD running).
+
+`hazard4eduMinimal.svd` describes the peripheral registers (CMSIS-SVD, currently UART0 at `0x00010000`, with
+the bit names of `sw/hello/src/uart16550.h`) for register views such as Cortex-Debug's XPERIPHERALS. Such a
+view reads every register at each stop of the debugger, and three UART registers change when read: RBR takes
+a byte out of the receive FIFO, IIR clears the transmitter-empty interrupt, LSR clears the error bits.

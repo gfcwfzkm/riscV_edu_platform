@@ -7,6 +7,8 @@
 #   make openocd    start OpenOCD on the board's JTAG port (gdb :3333, telnet :4444)
 #   make run ELF=x  load an rv32im ELF into the SRAM over JTAG and start it at the reset vector 0x0
 #   make console    open the board's UART in minicom (115200 8N1, quit with Ctrl+A X)
+#   make gdb-tdesc  regenerate openocd/hazard4eduMinimal-tdesc.xml (gdb register list without the
+#                   CSRs this core does not implement; needs the bitstream loaded, no other OpenOCD)
 #   make timing     show the clock frequency and utilisation reached by place & route
 #   make clean      remove the build folder
 #
@@ -33,11 +35,13 @@ NEXTPNR        ?= nextpnr-ecp5
 ECPPACK        ?= ecppack
 OPENFPGALOADER ?= openFPGALoader
 OPENOCD        ?= openocd
+GDB            ?= gdb
 
 TOP      := hazard4eduMinimal
 BUILD    := build/$(HDL)
 LPF     := scripts/gecko5.lpf
 OCD_CFG  := openocd/gecko5-hazard3.cfg
+TDESC    := openocd/hazard4eduMinimal-tdesc.xml
 
 # FPGA: LFE5U-85F in the CABGA381 package; the board clock is 50 MHz
 DEVICE        ?= --85k --package CABGA381 --speed 6
@@ -80,7 +84,7 @@ UART_BAUD ?= 115200
 LOADER_FLAGS := -c ft2232 $(if $(GECKO_BUSDEV),--busdev-num $(GECKO_BUSDEV))
 
 # ---------------------------------------------------------------------------- rules
-.PHONY: all bit load flash openocd run console timing clean help
+.PHONY: all bit load flash openocd run console gdb-tdesc timing clean help
 .DELETE_ON_ERROR:
 
 all: bit
@@ -129,6 +133,11 @@ run:
 console:
 	@test -e $(UART_DEV) || { echo "UART $(UART_DEV) not found: is the board connected? Set UART_DEV=/dev/ttyUSBn to choose another port."; exit 1; }
 	$(MINICOM) -D $(UART_DEV) -b $(UART_BAUD) $(CURDIR)/scripts/minirc.gecko5
+
+# Asks the running SoC which registers can be read and writes gdb's target description without the
+# others (see scripts/gdb_tdesc.py). Regenerate it when the CPU configuration changes.
+gdb-tdesc:
+	python3 scripts/gdb_tdesc.py --openocd "$(OPENOCD)" --config $(OCD_CFG) --gdb "$(GDB)" --output $(TDESC)
 
 timing:
 	@grep -E 'Max frequency for clock' $(BUILD)/nextpnr.log | tail -n 1 || echo "run 'make' first"
