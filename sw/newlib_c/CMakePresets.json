@@ -1,0 +1,60 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "rv32im",
+      "displayName": "hazard4eduMinimal RV32IM (riscv*-elf-gcc with newlib)",
+      "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/../cmake/riscv-rv32im.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "RISCV_TOOLCHAIN": "gcc"
+      }
+    },
+    {
+      "name": "rv32im-nofloat",
+      "inherits": "rv32im",
+      "displayName": "hazard4eduMinimal RV32IM, printf without floating point",
+      "cacheVariables": {
+        "PRINTF_FLOAT": "OFF"
+      }
+    },
+    {
+      "name": "rv32im-release",
+      "inherits": "rv32im",
+      "displayName": "hazard4eduMinimal RV32IM (riscv*-elf-gcc with newlib), Release (-O2)",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "rv32im-nofloat-release",
+      "inherits": "rv32im-nofloat",
+      "displayName": "hazard4eduMinimal RV32IM, printf without floating point, Release (-O2)",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "rv32im",
+      "configurePreset": "rv32im"
+    },
+    {
+      "name": "rv32im-nofloat",
+      "configurePreset": "rv32im-nofloat"
+    },
+    {
+      "name": "rv32im-release",
+      "configurePreset": "rv32im-release"
+    },
+    {
+      "name": "rv32im-nofloat-release",
+      "configurePreset": "rv32im-nofloat-release"
+    }
+  ]
+}
