@@ -1,5 +1,5 @@
 // Minimal Hazard3 system for the GECKO5Education (ECP5 LFE5U-85):
-// Hazard3 (Wishbone ports) + JTAG debug + 64 KiB SRAM + 16550 UART on a shared Wishbone bus.
+// Hazard3 (Wishbone ports) + JTAG debug + 64 KiB SRAM + 16550 UART on a selectable Wishbone bus.
 //
 // Memory map (see wishBone.xml):
 //   0x0000_0000 - 0x0000_ffff  sramSlave, 64 KiB block RAM (reset vector and mtvec at 0x0)
@@ -271,7 +271,11 @@ module hazard4eduMinimal
     .RxD(RxD),
     .TxD(TxD));
 
+`ifdef BUS_CROSSBAR
+  wishBoneCrossbarBusTop #(
+`else
   wishBoneSharedBusTop #(
+`endif
     .AddrBits(AddrBits),
     .DataBits(DataBits),
     .priorityScheme(priorityScheme)
