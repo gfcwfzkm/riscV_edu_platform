@@ -170,7 +170,7 @@ verilog = ["hazard3_irq_ctrl.v"]
 # The register file is built from the LUT RAM of the support module
 [filesets.regfile_1w2r]
 use     = ["pkg"]
-vhdl    = ["../../support/vhdl/sramLutram.vhdl", "hazard3_regfile_1w2r.vhdl"]
+vhdl    = ["../../support/vhdl/sramLutRam.vhdl", "hazard3_regfile_1w2r.vhdl"]
 verilog = ["../../support/verilog/sramLutRam.v", "hazard3_regfile_1w2r.v"]
 
 [filesets.power_ctrl]

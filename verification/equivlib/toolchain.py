@@ -26,11 +26,26 @@ class Toolchain:
     ghdl: str           # Absolute paths, so the tools don't depend on PATH lookups
     yosys: str
     env: dict[str, str] # Environment variables for the GHDL and Yosys processes
+    smtbmc: str | None = None   # yosys-smtbmc, needed by every solver except 'sat'
 
-    def versions(self) -> dict[str, str]:
-        """Return the versions of GHDL and Yosys (first output line), or 'unknown' if they can't be determined."""
+    def solver_path(self, solver: str) -> str | None:
+        """Return the path of an SMT solver's executable as yosys-smtbmc finds it (on the PATH of
+        'env'), or None if it is missing. 'sat' is built into Yosys and needs nothing else."""
+        return shutil.which(solver, path=self.env.get("PATH"))
+
+    def missing(self, solvers: set[str]) -> list[str]:
+        """Return the tools the given solvers need that are not installed, e.g. ['yosys-smtbmc', 'bitwuzla']."""
+        smt = sorted(s for s in solvers if s != "sat")
+        missing = [] if not smt or self.smtbmc else ["yosys-smtbmc"]
+        return missing + [s for s in smt if not self.solver_path(s)]
+
+    def versions(self, solvers: set[str] = frozenset()) -> dict[str, str]:
+        """Return the versions of GHDL, Yosys and the given SMT solvers (first output line), or
+        'unknown' if they can't be determined."""
         result = {}
-        for tool, argv in (("ghdl", [self.ghdl, "--version"]), ("yosys", [self.yosys, "-V"])):
+        tools = [("ghdl", [self.ghdl, "--version"]), ("yosys", [self.yosys, "-V"])]
+        tools += [(s, [self.solver_path(s) or s, "--version"]) for s in sorted(solvers) if s != "sat"]
+        for tool, argv in tools:
             try:
                 output = subprocess.run(argv, env=self.env, capture_output=True, text=True, timeout=30).stdout
                 result[tool] = output.splitlines()[0] if output else "unknown"
@@ -82,7 +97,9 @@ def _native() -> Toolchain | None:
     env["PATH"] = os.pathsep.join([str(root / "bin"), str(root / "py3bin"), env.get("PATH", "")])
     env["GHDL_PREFIX"] = str(root / "lib" / "ghdl")
     env["VERILATOR_ROOT"] = str(root / "share" / "verilator")
-    return Toolchain("native", f"OSS CAD Suite at {root}", str(ghdl), str(yosys), env)
+    smtbmc = root / "bin" / "yosys-smtbmc"
+    return Toolchain("native", f"OSS CAD Suite at {root}", str(ghdl), str(yosys), env,
+                     str(smtbmc) if smtbmc.is_file() else None)
 
 
 def _path() -> Toolchain | None:
@@ -90,7 +107,7 @@ def _path() -> Toolchain | None:
     ghdl, yosys = shutil.which("ghdl"), shutil.which("yosys")
     if not (ghdl and yosys):
         return None
-    return Toolchain("path", "ghdl/yosys from PATH", ghdl, yosys, dict(os.environ))
+    return Toolchain("path", "ghdl/yosys from PATH", ghdl, yosys, dict(os.environ), shutil.which("yosys-smtbmc"))
 
 
 def _docker() -> Toolchain:

@@ -1,10 +1,18 @@
-"""The GHDL + Yosys flow that proves one VHDL design equivalent to its Verilog reference."""
+"""The GHDL + Yosys flow that proves one VHDL design equivalent to its Verilog reference.
 
+Two proof engines share the same miter of both designs:
+- 'sat': Yosys' built-in SAT solver ('sat -seq N -prove-asserts') proves it inside Yosys.
+- an SMT solver (boolector, bitwuzla, yices, z3): Yosys exports the miter with 'write_smt2' and
+  yosys-smtbmc runs the bounded model check with that solver. Usually several times faster.
+"""
+
+import os
 import re
 import shlex
 import shutil
 import signal
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +23,12 @@ from .toolchain import Toolchain
 
 
 CUT_SEPARATOR = ":"     # Port names of blackboxed instances: <instance>:<port>
+# The inputs of the exported miter, with their widths: '; yosys-smt2-input <name> <width>'
+SMT2_INPUT = re.compile(r"^; yosys-smt2-input (\S+) (\d+)$", re.MULTILINE)
+
+# Process groups of the running yosys-smtbmc processes, see _run() and kill_running()
+_groups: set[int] = set()
+_groups_lock = threading.Lock()
 
 
 class FlowError(Exception):
@@ -31,7 +45,10 @@ class Plan:
     silver: Path                             # GHDL's Verilog netlist of the VHDL design
     script: Path                             # Yosys script file (equivalence.ys)
     script_text: str
-    log: Path                                # Commands and output of GHDL and Yosys
+    smt2: Path | None                        # SMT solvers: miter exported by Yosys (equivalence.smt2)
+    smtc: Path | None                        # SMT solvers: reset sequence as yosys-smtbmc constraints
+    smtbmc_args: list[str] | None            # SMT solvers: without the yosys-smtbmc executable
+    log: Path                                # Commands and output of GHDL, Yosys and yosys-smtbmc
     vcd: Path | None                         # Counterexample waveform, only written if the proof fails
     divergence: Path | None                  # Analysis of the counterexample (see vcddiff)
 
@@ -51,7 +68,10 @@ def plan(test: EquivTest, build_root: Path, dump_vcd: bool = False) -> Plan:
     ghdl_work = workdir / "ghdl-work"
     silver = workdir / f"{test.top}.v"
     script = workdir / "equivalence.ys"
-    vcd = workdir / f"{test.top}_counterexample.vcd" if dump_vcd else None
+    smt = test.solver != "sat"
+    smt2 = workdir / "equivalence.smt2" if smt else None
+    smtc = workdir / "reset.smtc" if smt else None
+    vcd =workdir / f"{test.top}_counterexample.vcd" if dump_vcd else None
     divergence = workdir / f"{test.top}_divergence.txt" if dump_vcd else None
 
     # GHDL can't set array generics via -g, so those become the new default value in a
@@ -74,13 +94,26 @@ def plan(test: EquivTest, build_root: Path, dump_vcd: bool = False) -> Plan:
                  *(f"-g{k}={vhdl_value(v)}" for k, v in scalar.items()),
                  *map(str, vhdl), "-e", test.top]
 
+    # yosys-smtbmc checks the asserts in steps 0 .. sat_cycles - 1, as many as 'sat -seq'. The
+    # reset constraints are only added when they exist (written by execute(), see _smtc()).
+    smtbmc_args = None
+    if smt:
+        smtbmc_args = ["-s", test.solver, "-t", str(test.sat_cycles)]
+        if test.reset:
+            smtbmc_args += ["--smtc", str(smtc)]
+        if vcd:
+            smtbmc_args += ["--dump-vcd", str(vcd)]
+        smtbmc_args.append(str(smt2))
+
     return Plan(test=test, workdir=workdir, ghdl_args=ghdl_args, vhdl_override=override, silver=silver,
-                script=script, script_text=_yosys_script(test, silver, script, vcd),
+                script=script, script_text=_yosys_script(test, silver, script, smt2, vcd),
+                smt2=smt2, smtc=smtc, smtbmc_args=smtbmc_args,
                 log=workdir / f"{test.top}.log", vcd=vcd, divergence=divergence)
 
 
 def execute(plan: Plan, toolchain: Toolchain, timeout: float | None) -> str:
-    """Run the plan, returning 'proven', 'ghdl-synth-failed', 'equivalence-failed', 'timeout' or 'killed'."""
+    """Run the plan, returning 'proven', 'ghdl-synth-failed', 'equivalence-failed', 'timeout',
+    'killed' or 'error' (Yosys or yosys-smtbmc failed without a verdict; SMT solvers only)."""
     # Start from a clean work directory, so no artifacts of an earlier run are mistaken for new ones
     shutil.rmtree(plan.workdir, ignore_errors=True)
     (plan.workdir / "ghdl-work").mkdir(parents=True)
@@ -113,21 +146,76 @@ def execute(plan: Plan, toolchain: Toolchain, timeout: float | None) -> str:
                 for vhdl_name, _ in plan.test.blackbox_instances:
                     if vhdl_name not in present:
                         log.write(f"note: blackboxed instance '{vhdl_name}' does not exist in this configuration\n")
-                plan.script_text = _yosys_script(plan.test, plan.silver, plan.script, plan.vcd, present)
+                plan.script_text = _yosys_script(plan.test, plan.silver, plan.script, plan.smt2,
+                                                 plan.vcd, present)
             plan.script.write_text(plan.script_text)
             log.write(f"\n$ {shlex.join(yosys)}\n")
             log.flush()
             code = _run(yosys, toolchain, plan.workdir, log, log, deadline).returncode
             if code < 0:
                 return _killed(log, "yosys", code)
-            # Yosys exits with an error if 'sat -verify' finds a counterexample (or on any other error)
+            if plan.smtbmc_args is None:
+                # 'sat': Yosys exits with an error if 'sat -verify' finds a counterexample (or on any other error)
+                if code > 0:
+                    _analyze_counterexample(plan, log)
+                    return "equivalence-failed"
+                return "proven"
             if code > 0:
-                _analyze_counterexample(plan, log)
-                return "equivalence-failed"
+                log.write("\n*** Yosys failed to export the miter ***\n")
+                return "error"
+            return _smtbmc(plan, toolchain, log, deadline)
         except subprocess.TimeoutExpired:
             log.write(f"\n*** Timed out after {timeout} s ***\n")
             return "timeout"
-    return "proven"
+
+
+def _smtbmc(plan: Plan, toolchain: Toolchain, log, deadline: float | None) -> str:
+    """Run the bounded model check of the exported miter with yosys-smtbmc; return the status."""
+    if plan.test.reset:
+        plan.smtc.write_text(_smtc(plan.test.reset, plan.smt2.read_text()))
+    smtbmc = [toolchain.smtbmc, *plan.smtbmc_args]
+    log.write(f"\n$ {shlex.join(smtbmc)}\n")
+    log.flush()
+    start = plan.log.stat().st_size     # Only the output of yosys-smtbmc is searched for its verdict
+    code = _run(smtbmc, toolchain, plan.workdir, log, log, deadline, own_group=True).returncode
+    if code < 0:
+        return _killed(log, "yosys-smtbmc", code)
+    with plan.log.open("rb") as f:
+        f.seek(start)
+        output = f.read().decode(errors="replace")
+    # yosys-smtbmc ends with 'Status: PASSED' or 'Status: FAILED'. Anything else (a missing solver,
+    # a solver error, a Python traceback) is no verdict, and must not look like a counterexample.
+    if code == 0 and "Status: PASSED" in output:
+        return "proven"
+    if "Status: FAILED" in output:
+        _analyze_counterexample(plan, log)
+        return "equivalence-failed"
+    log.write(f"\n*** yosys-smtbmc ({plan.test.solver}) failed without a verdict (exit code {code}) ***\n")
+    return "error"
+
+
+def _smtc(reset: dict[str, list[int]], smt2: str) -> str:
+    """Return the yosys-smtbmc constraints that apply the reset sequence, e.g.
+    { rst_n = [0, 1] } -> 'state 0 / assume (= [rst_n] false) / state 1 / assume (= [rst_n] true)'.
+
+    The step numbers of the TOML start at 1 (like 'sat -set-at'), those of yosys-smtbmc at 0. Only
+    the listed steps are constrained; afterwards the signal is free, as with 'sat'. Yosys exports
+    1-bit signals as SMT Booleans, wider ones as bit vectors, so the widths are taken from the
+    exported miter.
+    """
+    widths = {name: int(width) for name, width in SMT2_INPUT.findall(smt2)}
+    steps: dict[int, list[str]] = {}
+    for name, values in reset.items():
+        if name not in widths:
+            raise FlowError(f"reset signal '{name}' is not an input of the design")
+        width = widths[name]
+        for step, value in enumerate(values):
+            if not 0 <= value < 1 << width:
+                raise FlowError(f"reset value {value} of '{name}' does not fit in {width} bit(s)")
+            literal = ("true" if value else "false") if width == 1 else f"#b{value:0{width}b}"
+            steps.setdefault(step, []).append(f"assume (= [{name}] {literal})")
+    return "".join(f"state {step}\n" + "".join(f"{line}\n" for line in lines)
+                   for step, lines in sorted(steps.items()))
 
 
 def _killed(log, tool: str, code: int) -> str:
@@ -182,13 +270,51 @@ def verilog_value(value: object) -> str:
     return str(value)
 
 
-def _run(argv, toolchain, cwd, stdout, stderr, deadline) -> subprocess.CompletedProcess:
+def _run(argv, toolchain, cwd, stdout, stderr, deadline, own_group: bool = False) -> subprocess.CompletedProcess:
     """Run a command with the given toolchain and working directory; its returncode is negative if
     it was terminated by that signal. Raises subprocess.TimeoutExpired after the deadline;
-    subprocess.run kills the process in that case."""
+    subprocess.run kills the process in that case.
+
+    own_group: start the command in its own process group, and kill the whole group on a timeout.
+    For yosys-smtbmc, whose solver process would otherwise keep running after yosys-smtbmc is
+    killed. Outside the terminal's process group it doesn't receive Ctrl-C, so the runner calls
+    kill_running() instead. POSIX only; elsewhere only the command itself is killed.
+    """
     timeout = max(deadline - time.monotonic(), 0.1) if deadline else None
-    return subprocess.run(argv, cwd=cwd, env=toolchain.env, stdout=stdout, stderr=stderr,
-                          stdin=subprocess.DEVNULL, timeout=timeout)
+    if not own_group or os.name != "posix":
+        return subprocess.run(argv, cwd=cwd, env=toolchain.env, stdout=stdout, stderr=stderr,
+                              stdin=subprocess.DEVNULL, timeout=timeout)
+    with subprocess.Popen(argv, cwd=cwd, env=toolchain.env, stdout=stdout, stderr=stderr,
+                          stdin=subprocess.DEVNULL, process_group=0) as process:
+        with _groups_lock:
+            _groups.add(process.pid)    # process_group=0: the group ID is the process ID
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_group(process.pid)
+            process.wait()
+            raise
+        finally:
+            with _groups_lock:
+                _groups.discard(process.pid)
+            # The solver may outlive yosys-smtbmc if that crashed
+            _kill_group(process.pid)
+    return subprocess.CompletedProcess(argv, process.returncode)
+
+
+def _kill_group(group: int):
+    """Kill all processes of a process group, if any are left."""
+    try:
+        os.killpg(group, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def kill_running():
+    """Kill the running yosys-smtbmc processes and their solvers (on Ctrl-C, see _run())."""
+    with _groups_lock:
+        for group in _groups:
+            _kill_group(group)
 
 
 def _netlist_instances(silver: Path, top: str) -> set[str]:
@@ -227,9 +353,10 @@ def _blackbox_commands(test: EquivTest, design: str, present: set[str] | None) -
     return commands
 
 
-def _yosys_script(test: EquivTest, silver: Path, script: Path, vcd: Path | None,
+def _yosys_script(test: EquivTest, silver: Path, script: Path, smt2: Path | None, vcd: Path | None,
                   present: set[str] | None = None) -> str:
-    """Return the Yosys script that proves the equivalence of the VHDL and Verilog designs."""
+    """Return the Yosys script that builds the miter of the VHDL and Verilog designs, and proves it
+    with 'sat' or (smt2 given) exports it for yosys-smtbmc."""
     include = "".join(f"-I{d} " for d in test.include)
     # -show-ports (= -show-inputs -show-outputs) lists the ports of a counterexample in the log.
     # With a VCD dump, -show-all is added, because the dump is believed to contain only the shown
@@ -260,14 +387,31 @@ def _yosys_script(test: EquivTest, silver: Path, script: Path, vcd: Path | None,
         *_blackbox_commands(test, "silver", present),
         "proc; flatten silver; memory; async2sync",
         "",
-        f"# Build the miter and prove gold and silver equivalent over {test.sat_cycles} cycles",
+        "# Build the miter of gold and silver",
         "equiv_make -make_assert gold silver equiv",
         "prep -top equiv",
         "async2sync; opt",
-        # Blackboxes have no definition, so the SAT solver must not fail on unknown cells
-        "sat " + ("-ignore-unknown-cells " if test.blackbox else "")
-        + f"-seq {test.sat_cycles} -verify -prove-asserts -set-init-zero {show_options}{reset}",
     ]
+    if smt2 is None:
+        lines += [
+            f"# Prove gold and silver equivalent over {test.sat_cycles} cycles",
+            # Blackboxes have no definition, so the SAT solver must not fail on unknown cells
+            "sat " + ("-ignore-unknown-cells " if test.blackbox else "")
+            + f"-seq {test.sat_cycles} -verify -prove-asserts -set-init-zero {show_options}{reset}",
+        ]
+    else:
+        lines += [
+            f"# Export the miter for yosys-smtbmc ({test.solver}), which proves it over {test.sat_cycles} cycles",
+            # Vendor blackboxes have no definition: their outputs become free values in every cycle,
+            # as with 'sat -ignore-unknown-cells' (yosys-smtbmc fails on blackbox cells otherwise)
+            *(["cutpoint -blackbox"] if test.blackbox else []),
+            # All flip-flops start at zero (= 'sat -set-init-zero'), and constant x bits become 0, which
+            # is how 'sat' treats them without -enable_undef
+            "setundef -zero -init",
+            "dffunmap",
+            # -wires: all named wires end up in the counterexample VCD
+            f"write_smt2 -wires {smt2}",
+        ]
     return "\n".join(lines) + "\n"
 
 

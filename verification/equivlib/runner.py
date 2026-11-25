@@ -45,12 +45,13 @@ def run_tests(tests: list[EquivTest], toolchain: Toolchain, build_root: Path, re
         A list of Result objects, one for each test, in the same order as the input tests.
     """
     build_root.mkdir(parents=True, exist_ok=True)
-    versions = toolchain.versions()
+    versions = toolchain.versions({t.solver for t in tests})
     # Write the toolchain description and versions to a file in the build root, for reproducibility.
     (build_root / "toolchain.txt").write_text(
         f"environment: {toolchain.description}\n" + "".join(f"{k}: {v}\n" for k, v in versions.items()))
     print(f"Running {len(tests)} equivalence check(s) on {jobs} worker(s), {toolchain.description}")
-    print(f"  {versions['ghdl']}\n  {versions['yosys']}\n")
+    # Some solvers print only the number (boolector: '3.2.4'), so the tool name is added where it's missing
+    print("".join(f"  {v if k.lower() in v.lower() else f'{k} {v}'}\n" for k, v in versions.items()))
 
     stop = threading.Event()        # Set by --fail-fast or Ctrl-C: tests not started yet are skipped
     results: list[Result] = []      # Filled in completion order, sorted at the end
@@ -101,7 +102,9 @@ def run_tests(tests: list[EquivTest], toolchain: Toolchain, build_root: Path, re
             # Ctrl-C: drop queued tests. Running GHDL/Yosys processes receive the SIGINT from the
             # terminal themselves; leaving the 'with' block waits until they have ended.
             stop.set()
-            executor.shutdown(cancel_futures=True)
+            executor.shutdown(cancel_futures=True, wait=False)
+            # yosys-smtbmc runs in its own process group and doesn't see the SIGINT, see flow._run()
+            flow.kill_running()
             raise
 
     # Sort the results in the same order as the input tests, write them to a CSV file, and print a summary.

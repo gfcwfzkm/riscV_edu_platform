@@ -1,4 +1,5 @@
-"""Analysis of a Yosys 'sat -dump_vcd' counterexample: which gold/gate signals differ, and since when.
+"""Analysis of a counterexample (Yosys 'sat -dump_vcd' or yosys-smtbmc '--dump-vcd'): which
+gold/gate signals differ, and since when.
 
 In the counterexample, equiv_make has merged both designs into one module: every signal of the
 Verilog reference ends in '_gold', every signal of the GHDL netlist in '_gate'. Both sides are
@@ -154,35 +155,53 @@ def report(analysis: Analysis, vcd: Path, step: int | None = None, list_unpaired
 
 
 def parse_vcd(path: Path) -> tuple[list[Signal], int]:
-    """Return the signals with one value per SAT step, and the number of steps.
+    """Return the signals with one value per step, and the number of steps.
 
-    Yosys writes the initial state and step 1 at #0, step n at #n, and a final timestamp
-    without values that only marks the end of the trace.
+    Two layouts are understood:
+    - Yosys 'sat -dump_vcd': the initial state and step 1 at #0, step n at #n, and a final
+      timestamp without values that only marks the end of the trace. All signals are in the
+      top-level scope, with hierarchical names like 'sync_req.sync_flops_gold'.
+    - yosys-smtbmc '--dump-vcd' (recognised by its 'smt_step' variable): step k (counted from 0)
+      at #10k, clock edges in between at #10k-5, and no end marker. Hierarchical names are split
+      into nested scopes, which are joined with '.' again.
     """
     by_id: dict[str, Signal] = {}           # VCD identifier code (e.g. 'v12') -> signal
     current: dict[str, str] = {}            # Identifier -> latest value
-    snapshots: list[dict[str, str]] = []    # Values of all signals at the end of each timestamp
-    started = False                         # True after the first '#<time>' line
+    snapshots: list[dict[str, str]] = []    # Values of all signals at the end of each step
+    scopes: list[str] = []                  # Open $scope names, the first one is the top level
+    smtbmc = False                          # Layout of yosys-smtbmc, see above
+    time = None                             # Current timestamp, None before the first '#<time>' line
     with path.open() as f:
         for line in f:
             line = line.strip()
-            if line.startswith("$var"):
+            if line.startswith("$scope"):
+                scopes.append(line.split()[2].lstrip("\\"))      # $scope module <name> $end
+            elif line.startswith("$upscope"):
+                scopes.pop()
+            elif line.startswith("$var"):
                 parts = line.split()
                 # $var <type> <width> <id> <name...> $end, the name may contain a ' [msb_lsb]' slice
-                by_id[parts[3]] = _signal(" ".join(parts[4:-1]), int(parts[2]))
+                name = " ".join(parts[4:-1]).lstrip("\\")
+                if name == "smt_step" and len(scopes) <= 1:
+                    smtbmc = True
+                by_id[parts[3]] = _signal(".".join([*scopes[1:], name]), int(parts[2]))
             elif line.startswith("#"):
-                # A new timestamp closes the previous one. The final timestamp is never closed and so
-                # not counted, which drops the empty end marker.
-                if started:
+                # A new timestamp closes the previous one. With 'sat', the final timestamp is never
+                # closed and so not counted, which drops the empty end marker. yosys-smtbmc's clock
+                # edges (#10k-5) are no steps.
+                if time is not None and (not smtbmc or time % 10 == 0):
                     snapshots.append(dict(current))
-                started = True
+                time = int(line[1:])
             elif line.startswith(("b", "B")):
                 # Vector value: 'b<bits> <id>'
                 value, ident = line[1:].split()
                 current[ident] = value
-            elif started and line[:1] in ("0", "1", "x", "X", "z", "Z"):
+            elif time is not None and line[:1] in ("0", "1", "x", "X", "z", "Z"):
                 # Scalar value: '<bit><id>'
                 current[line[1:]] = line[0].lower()
+    # yosys-smtbmc's last timestamp holds the values of the last step
+    if smtbmc and time is not None and time % 10 == 0:
+        snapshots.append(dict(current))
     # One value per step and signal, padded to the full width: VCD may omit leading bits; they
     # are 0 if the first given bit is 0 or 1, otherwise copies of it (x or z)
     for snapshot in snapshots:

@@ -1,6 +1,7 @@
 """Command line shared by verification/equiv.py and the per-module run.py launchers."""
 
 import argparse
+import dataclasses
 import fnmatch
 import os
 import shlex
@@ -8,7 +9,7 @@ import sys
 from pathlib import Path
 
 from . import container, flow, runner
-from .config import LEVELS, ConfigError, discover, load_module
+from .config import LEVELS, SOLVERS, ConfigError, discover, load_module
 from .toolchain import ENVIRONMENTS, NoLocalToolchain, ToolchainError, resolve
 
 REPO_ROOT = Path(__file__).resolve().parents[2]    # <repo>/verification/equivlib/cli.py -> <repo>
@@ -17,7 +18,8 @@ BUILD_ROOT = REPO_ROOT / "verification" / "build"
 EXIT_FAILED = 1     # At least one check was not proven (failed, timeout, killed, error, or skipped by --fail-fast)
 EXIT_USAGE = 2      # Usage or configuration error: bad arguments (argparse also exits with 2), unknown
                     # module or test name, invalid equivalence.toml, no tests selected
-EXIT_TOOLCHAIN = 3  # No GHDL/Yosys found for the requested --env, or Docker missing / image build failed
+EXIT_TOOLCHAIN = 3  # No GHDL/Yosys (or a needed solver) found for the requested --env, or Docker
+                    # missing / image build failed
 
 
 def main(argv: list[str] | None = None, module: str | None = None) -> int:
@@ -67,6 +69,10 @@ def main(argv: list[str] | None = None, module: str | None = None) -> int:
         print("error: no tests selected", file=sys.stderr)
         return EXIT_USAGE
 
+    # --solver overrides the solver of every test (from equivalence.toml or the default)
+    if args.solver:
+        tests = [dataclasses.replace(t, solver=args.solver) for t in tests]
+
     # List or validate without running the tools (no toolchain needed).
     if args.list:
         for test in tests:
@@ -89,6 +95,12 @@ def main(argv: list[str] | None = None, module: str | None = None) -> int:
         return _docker_fallback(str(error), args, argv, module)
     except ToolchainError as error:
         print(f"error: {error}", file=sys.stderr)
+        return EXIT_TOOLCHAIN
+    # Fail before running anything if a solver the tests need is not installed
+    missing = toolchain.missing({t.solver for t in tests})
+    if missing:
+        print(f"error: {', '.join(missing)} not found ({toolchain.description}). Install the OSS CAD Suite, "
+              f"or choose another solver with --solver (e.g. --solver sat).", file=sys.stderr)
         return EXIT_TOOLCHAIN
 
     # Run the selected tests in parallel, with the requested timeout and fail-fast behavior
@@ -176,6 +188,9 @@ def _parser(module: str | None) -> argparse.ArgumentParser:
     parser.add_argument("--vcd", action="store_true",
                         help="dump the counterexample of a failing proof, with all signals, "
                              "to <top>_counterexample.vcd")
+    parser.add_argument("--solver", choices=SOLVERS,
+                        help="proof engine for all selected tests, overriding 'solver' in equivalence.toml "
+                             "(default there: boolector; sat = Yosys' built-in SAT solver)")
     parser.add_argument("--fail-fast", action="store_true", help="stop starting new tests after the first failure")
     parser.add_argument("--timeout", type=float, metavar="SECONDS", help="time limit per test")
     parser.add_argument("--env", choices=ENVIRONMENTS, default="auto",
@@ -228,5 +243,9 @@ def _check(tests, dump_vcd: bool) -> int:
         print(f"$ ghdl {shlex.join(plan.ghdl_args)} > {plan.silver}")
         print(f"$ yosys -s {plan.script}")
         print(plan.script_text)
+        if plan.smtbmc_args:
+            if plan.smtc:
+                print(f"# {plan.smtc.name}: reset sequence {plan.test.reset}, written after the export")
+            print(f"$ yosys-smtbmc {shlex.join(plan.smtbmc_args)}\n")
     print(f"{len(tests)} test(s) OK")
     return 0

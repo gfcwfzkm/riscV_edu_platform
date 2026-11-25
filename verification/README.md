@@ -4,12 +4,14 @@ The VHDL modules in `hdl/modules/` are ports of Verilog reference designs (mostl
 checks prove formally that both implementations behave identically:
 
 1. GHDL synthesizes the VHDL design to a Verilog netlist (*silver*).
-2. Yosys reads the reference Verilog (*gold*), builds a miter of both and proves with its SAT solver
-   that all outputs are equal for a number of clock cycles after reset.
+2. Yosys reads the reference Verilog (*gold*) and builds a miter of both.
+3. A solver proves that all outputs are equal for a number of clock cycles after reset (bounded
+   model check). By default Yosys exports the miter to SMT-LIB 2 and `yosys-smtbmc` proves it with
+   an SMT solver (see [Solvers](#solvers)); Yosys' built-in SAT solver is still available.
 
 Requirements: Python 3.14 or newer (standard library only) and the
 [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build) in `/opt/oss-cad-suite`
-(or wherever `OSS_CAD_SUITE` points), or `ghdl` and `yosys` on `PATH`. Without a local
+(or wherever `OSS_CAD_SUITE` points), or `ghdl`, `yosys`, `yosys-smtbmc` and the solver on `PATH`. Without a local
 installation, `--env docker` runs everything in a container instead (see [Docker](#docker)).
 
 ## Running
@@ -29,7 +31,8 @@ hdl/modules/hazard4edu/verification/run.py           # one module, from its own 
 | `-k PATTERN`        | Only checks whose `module/id` contains `PATTERN`, or matches it if it has `*?[` wildcards. Repeatable                                                                                                                                                                           |
 | `--list`            | Show the selected checks without running them                                                                                                                                                                                                                                         |
 | `--check`           | Validate the TOML files and print the GHDL/Yosys commands without running them                                                                                                                                                                                                        |
-| `--vcd`             | Dump the counterexample of a failing proof, with all signals of gold and silver, to `<top>_counterexample.vcd` next to the log (e.g. for GTKWave). Passing proofs have no counterexample, so they write no file. Without `--vcd`, the log of a failing proof lists only the ports |
+| `--vcd`             | Dump the counterexample of a failing proof, with all signals of gold and silver, to `<top>_counterexample.vcd` next to the log (e.g. for GTKWave). Passing proofs have no counterexample, so they write no file. Without `--vcd`, the log of a failing proof lists only the port values (solver `sat`) or just the failing step (SMT solvers) |
+| `--solver S`        | Solver for all selected checks, overriding `solver` in `equivalence.toml`: `boolector`, `bitwuzla`, `yices`, `z3` or `sat` (see [Solvers](#solvers)) |
 | `--fail-fast`       | Start no new checks after the first failure                                                                                                                                                                                                                                           |
 | `--timeout S`       | Time limit in seconds per check                                                                                                                                                                                                                                                       |
 | `--env ENV`         | `auto` (default: OSS CAD Suite, then `PATH`, then prompts to fall back to Docker if neither is found), `native`, `path` or `docker` (run in a container, see [Docker](#docker))                                                                  |
@@ -37,16 +40,39 @@ hdl/modules/hazard4edu/verification/run.py           # one module, from its own 
 | `--rebuild-image`   | With `--env docker`: rebuild the image, e.g. to update a `latest` image                                                                                                                                                                                               |
 
 Exit codes: `0` everything proven, `1` at least one check failed, `2` invalid arguments or TOML
-file, `3` no GHDL/Yosys available (or Docker missing / image build failed).
+file, `3` no GHDL/Yosys or a needed solver available (or Docker missing / image build failed).
 
-Status of a check: `proven`, `ghdl-synth-failed`, `equivalence-failed` (the SAT solver found a
-counterexample), `timeout`, `killed` (GHDL or Yosys was terminated by a signal, e.g. by hand or by
-the out-of-memory killer, so nothing was disproven) or `error` (e.g. the top-level entity was not found).
+Status of a check: `proven`, `ghdl-synth-failed`, `equivalence-failed` (the solver found a
+counterexample), `timeout`, `killed` (GHDL, Yosys or the solver was terminated by a signal, e.g. by
+hand or by the out-of-memory killer, so nothing was disproven) or `error` (e.g. the top-level entity
+was not found, or Yosys / `yosys-smtbmc` failed without a verdict; the log says why).
 
 Artifacts of each check land in `verification/build/<module>/<test id>/`: the GHDL netlist, the
-generated `equivalence.ys` script (re-run it by hand with `yosys -s equivalence.ys`) and the log.
+generated `equivalence.ys` script, for SMT solvers the exported `equivalence.smt2` and the reset
+constraints `reset.smtc`, and the log. The log starts each step with the command line, so it can be
+re-run by hand (`yosys -s equivalence.ys`, then the `yosys-smtbmc` line).
 `verification/build/results.csv` summarizes the last run, `toolchain.txt` records the tool versions.
 Only the directories of the checks being run are replaced.
+
+## Solvers
+
+The solver is chosen per test (`solver` in `equivalence.toml`, also in `[defaults]`) and can be
+overridden for a run with `--solver`. Without either, `boolector` is used.
+
+| Solver      | Notes                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `boolector` | Default. Fastest overall in our measurements, and the only SMT solver that proves `sramSlave` (1 KiB RAM flattened to flip-flops) in reasonable time (~40 s). No longer developed; superseded by bitwuzla |
+| `bitwuzla`  | Successor of boolector, often 20-40 % faster on arithmetic (ALU, multiplier/divider, uartTx), but did not finish `sramSlave` within 5 minutes |
+| `yices`     | Several times slower than boolector here                                                                                      |
+| `z3`        | Much slower, not recommended                                                                                                  |
+| `sat`       | Yosys' built-in SAT solver, the previous flow. Typically 3-10x slower (uartBus and sramSlave take minutes), but needs nothing besides Yosys |
+
+All of them prove the same property: the outputs of both designs are equal in every one of
+`sat_cycles` steps, starting with all flip-flops at zero, with the reset sequence applied and all
+other inputs free. The SMT solvers run the bounded model check in `yosys-smtbmc`, which checks one
+step after the other and stops at the first failing one, so their counterexamples are as short as
+possible. When a solver is slow for a design, try another one with `--solver` and set it in the
+test's TOML entry.
 
 ## Docker
 
@@ -87,7 +113,8 @@ First divergence at step 9:
 First divergence at an output: step 12: src_pslverr
 ```
 
-The earliest diverging signal is usually closest to the bug. The analysis can be repeated, also
+Steps are counted from 1, like the `reset` sequences (the `yosys-smtbmc` output in the log counts
+from 0). The earliest diverging signal is usually closest to the bug. The analysis can be repeated, also
 for another step, with `verification/vcd_diff.py <vcd> [--step N]`.
 
 The signals are paired by name in stages, because the implementations name things differently:
@@ -113,6 +140,7 @@ include     = ["verilog"]         # Verilog `include directories
 [defaults]                        # optional, applies to every test that doesn't set its own
 reset      = { rst_n = [0, 1] }   # signal = [value at SAT step 1, step 2, ...]
 sat_cycles = 12                   # number of clock cycles to prove (default 12)
+solver     = "boolector"          # proof engine, see "Solvers" (default boolector)
 
 [filesets.pkg]                    # named groups of files that tests (or other filesets) can 'use'
 vhdl = ["hazard3_pkg.vhdl"]
@@ -138,7 +166,7 @@ Per test, the following keys are available:
 | `use`, `vhdl`, `verilog` | Source files, dependencies first. The VHDL list must contain the top-level entity                       |
 | `blackbox`                   | Verilog stubs for vendor primitives (adds `-ignore-unknown-cells` to the SAT solver)                  |
 | `blackbox_instances`         | Instances of the top level to blackbox, so only their wiring is proven, see [Blackboxed instances](#blackboxed-instances) |
-| `reset`, `sat_cycles`      | Override the `[defaults]`                                                                             |
+| `reset`, `sat_cycles`, `solver` | Override the `[defaults]`                                                                        |
 | `generic_map`                | `{ VHDL_NAME = "VERILOG_NAME" }` for generics that are named differently in the Verilog reference     |
 | `basic`                      | Generics of the basic level. Without it, the defaults of the entity/module are used, so they must agree |
 | `extensive.matrix`           | `GENERIC = [values]`, the full product of all listed generics is checked                              |

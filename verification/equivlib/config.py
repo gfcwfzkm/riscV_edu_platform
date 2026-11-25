@@ -10,14 +10,17 @@ from pathlib import Path
 LEVELS = ("basic", "extensive")
 MANIFEST_GLOB = "hdl/modules/*/verification/equivalence.toml"
 MAX_ID_LENGTH = 200     # Test IDs are used as directory names, which are limited to 255 bytes
+# Proof engines: 'sat' is Yosys' built-in SAT solver, the others are SMT solvers run by yosys-smtbmc
+SOLVERS = ("boolector", "bitwuzla", "yices", "z3", "sat")
+DEFAULT_SOLVER = "boolector"
 
 # Allowed keys per table. Anything else is reported as an error, so typos don't go unnoticed.
 TOP_KEYS = {"module", "defaults", "filesets", "test"}
 MODULE_KEYS = {"vhdl_dir", "verilog_dir", "include"}
-DEFAULT_KEYS = {"reset", "sat_cycles"}
+DEFAULT_KEYS = {"reset", "sat_cycles", "solver"}
 FILESET_KEYS = {"use", "vhdl", "verilog"}
 TEST_KEYS = {"name", "top", "use", "vhdl", "verilog", "blackbox", "blackbox_instances", "reset",
-             "sat_cycles", "generic_map", "basic", "extensive"}
+             "sat_cycles", "solver", "generic_map", "basic", "extensive"}
 EXTENSIVE_KEYS = {"matrix", "configs", "exclude"}
 
 
@@ -41,6 +44,7 @@ class EquivTest:
     blackbox_instances: list[tuple[str, str]]
     reset: dict[str, list[int]]     # Signal -> value at SAT step 1, 2, ...
     sat_cycles: int
+    solver: str                     # One of SOLVERS
     generics: dict[str, object]     # VHDL generic name -> value
     generic_map: dict[str, str]     # VHDL generic name -> Verilog parameter name, if they differ
 
@@ -104,6 +108,7 @@ class _Module:
         self._check_keys(defaults, DEFAULT_KEYS, "[defaults]")
         self.default_reset = self._reset(defaults.get("reset", {}), "[defaults]")
         self.default_cycles = self._cycles(defaults.get("sat_cycles", 12), "[defaults]")
+        self.default_solver = self._solver(defaults.get("solver", DEFAULT_SOLVER), "[defaults]")
 
         # [filesets.*] are only resolved when a test uses them; _resolved caches the result
         self.filesets = self._table(data, "filesets", "top level")
@@ -137,8 +142,9 @@ class _Module:
             blackbox = [self._file(self.root / f, f"{where} blackbox")
                         for f in self._strings(spec.get("blackbox", []), f"{where} blackbox")]
             instances = self._instances(spec.get("blackbox_instances", []), f"{where} blackbox_instances")
-            reset =self._reset(spec["reset"], where) if "reset" in spec else self.default_reset
+            reset = self._reset(spec["reset"], where) if "reset" in spec else self.default_reset
             cycles = self._cycles(spec.get("sat_cycles", self.default_cycles), where)
+            solver = self._solver(spec.get("solver", self.default_solver), where)
             generic_map = self._table(spec, "generic_map", where)
             for vhdl_name, verilog_name in generic_map.items():
                 self._string(verilog_name, f"{where} generic_map.{vhdl_name}")
@@ -153,7 +159,7 @@ class _Module:
                     module=self.name, id=tid, name=name, top=self._string(spec.get("top", name), f"{where} top"),
                     vhdl=vhdl, verilog=verilog, include=self.include, blackbox=blackbox,
                     blackbox_instances=instances, reset=reset,
-                    sat_cycles=cycles, generics=generics, generic_map=generic_map,
+                    sat_cycles=cycles, solver=solver, generics=generics, generic_map=generic_map,
                 ))
         return tests
 
@@ -281,6 +287,12 @@ class _Module:
         """Return the number of SAT cycles, validating that it is a positive integer."""
         if type(value) is not int or value < 1:
             self._fail(f"{where} sat_cycles", "expected a positive integer")
+        return value
+
+    def _solver(self, value: object, where: str) -> str:
+        """Return the proof engine, validating that it is one of SOLVERS."""
+        if value not in SOLVERS:
+            self._fail(f"{where} solver", f"expected one of {', '.join(SOLVERS)}")
         return value
 
     def _table(self, parent: dict, key: str, where: str) -> dict:
