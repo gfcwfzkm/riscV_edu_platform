@@ -15,9 +15,14 @@
 #include <stdint.h>
 
 #define UART16550_BASE   0x00010000u   /* see hdl/systems/hazard4eduMinimal/README.md */
-#define UART16550_CLK_HZ 50000000u     /* the baud generator runs on the 50 MHz board clock */
 
-/* Divisor latch value for a baud rate: clock / (16 * baud), rounded (27 for 115200 baud) */
+/* The baud generator runs on the CPU clock. F_CPU (Hz) is set by the build system (CMakeLists.txt) */
+#ifndef F_CPU
+#error "F_CPU (CPU clock in Hz) is not defined, set it in CMakeLists.txt or with -DF_CPU=..."
+#endif
+#define UART16550_CLK_HZ F_CPU
+
+/* Divisor latch value for a baud rate: clock / (16 * baud), rounded (27 for 115200 baud at 50 MHz) */
 #define UART16550_BAUD_DIVISOR(clk_hz, baud) (((clk_hz) + 8u * (baud)) / (16u * (baud)))
 
 #ifndef REGISTER8_T_DEFINED
@@ -50,7 +55,11 @@ typedef struct UART16550_struct {
     register8_t SCR;        /* 0x07  scratch */
 } UART16550_t;
 
+#ifdef __cplusplus
+static_assert(sizeof(UART16550_t) == 8, "UART16550_t must map the 8 byte registers");
+#else
 _Static_assert(sizeof(UART16550_t) == 8, "UART16550_t must map the 8 byte registers");
+#endif
 
 #define UART0 (*(UART16550_t *)UART16550_BASE)   /* hazard4eduMinimal UART */
 
@@ -176,8 +185,12 @@ typedef enum UART_PMODE_enum {
 #define UART_RXFE_bp   7        /* error in the receiver FIFO bit position */
 
 /* ==========================================================================================
- * Polling driver (uart16550.c), working on UART0
+ * Polling driver (uart16550.c), working on UART0; callable from C++
  * ========================================================================================== */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void uart_init(uint32_t baud);          /* 8N1, FIFOs cleared */
 void uart_putc(char c);
 void uart_puts(const char *s);          /* "\n" is sent as "\r\n" */
@@ -185,5 +198,9 @@ void uart_put_hex(uint32_t value);      /* 0x0000002a */
 void uart_put_dec(uint32_t value);
 int  uart_getc_nonblocking(void);       /* received byte, or -1 if the receive FIFO is empty */
 void uart_flush(void);                  /* wait until the last bit has left the transmitter */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -39,6 +39,6 @@ int main(void)
         uart_puts("tick ");
         uart_put_dec(counter);
         uart_puts("\n");
-        delay_cycles(UART16550_CLK_HZ);   /* about one second at 50 MHz */
+        delay_cycles(F_CPU);   /* about one second */
     }
 }

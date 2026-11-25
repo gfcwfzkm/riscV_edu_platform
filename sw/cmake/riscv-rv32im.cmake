@@ -1,11 +1,18 @@
-# CMake toolchain file: bare-metal RV32IM (no compressed instructions), ilp32 ABI.
+# CMake toolchain file: bare-metal RV32IM (no compressed instructions), ilp32 ABI, C, C++ and assembler.
+# Shared by all firmware projects in sw/ (see sw/README.md).
 #
-#   cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/riscv-rv32im.cmake
+#   cmake -B build -DCMAKE_TOOLCHAIN_FILE=../cmake/riscv-rv32im.cmake
 #
 # RISCV_TOOLCHAIN selects the compiler:
 #   auto  (default) a RISC-V GCC if one is found on PATH, otherwise clang
 #   gcc   riscv*-elf-gcc; RISCV_GCC_PREFIX can name it, e.g. -DRISCV_GCC_PREFIX=riscv64-unknown-elf-
 #   clang clang --target=riscv32-unknown-elf with ld.lld and llvm-objcopy (no libc, no runtime library)
+#
+# This file only selects the compiler and the target. Whether a program is built freestanding
+# (-ffreestanding -nostdlib, no libraries) or against newlib/libstdc++ (GCC only) is decided per
+# program by hazard4edu_firmware() in hazard4eduMinimal.cmake.
+#
+# C++ never uses exceptions, RTTI or thread-safe local statics: they cost too much memory here.
 #
 # The C extension stays off: hazard4eduMinimal is built without it (with C the core does not reach
 # 50 MHz, see hdl/systems/hazard4eduMinimal/README.md), so -march must not contain "c".
@@ -45,32 +52,35 @@ if(RISCV_GCC_PREFIX AND NOT RISCV_TOOLCHAIN STREQUAL "clang")
   # ---------------------------------------------------------------------------- GCC
   set(RISCV_COMPILER_KIND gcc)
   set(CMAKE_C_COMPILER   ${RISCV_GCC_PREFIX}gcc)
+  set(CMAKE_CXX_COMPILER ${RISCV_GCC_PREFIX}g++)
   set(CMAKE_ASM_COMPILER ${RISCV_GCC_PREFIX}gcc)
   set(CMAKE_OBJCOPY      ${RISCV_GCC_PREFIX}objcopy CACHE FILEPATH "")
   set(CMAKE_OBJDUMP      ${RISCV_GCC_PREFIX}objdump CACHE FILEPATH "")
   set(CMAKE_SIZE         ${RISCV_GCC_PREFIX}size    CACHE FILEPATH "")
   set(_target_flags "")
-  set(_link_flags "-nostartfiles -nostdlib -Wl,--gc-sections")
-  set(_libs "-lgcc")
+  # Everything runs from the one SRAM, so the single RWX segment is intended
+  set(_link_flags "-nostartfiles -Wl,--gc-sections -Wl,--no-warn-rwx-segments")
 else()
   # ---------------------------------------------------------------------------- clang
   set(RISCV_COMPILER_KIND clang)
   set(CMAKE_C_COMPILER   clang)
+  set(CMAKE_CXX_COMPILER clang++)
   set(CMAKE_ASM_COMPILER clang)
   set(CMAKE_C_COMPILER_TARGET   riscv32-unknown-elf)
+  set(CMAKE_CXX_COMPILER_TARGET riscv32-unknown-elf)
   set(CMAKE_ASM_COMPILER_TARGET riscv32-unknown-elf)
   find_program(CMAKE_OBJCOPY llvm-objcopy REQUIRED)
   find_program(CMAKE_OBJDUMP llvm-objdump REQUIRED)
   find_program(CMAKE_SIZE    llvm-size    REQUIRED)
   set(_target_flags "")
-  set(_link_flags "-fuse-ld=lld -nostartfiles -nostdlib -Wl,--gc-sections")
-  set(_libs "")
+  set(_link_flags "-fuse-ld=lld -nostartfiles -Wl,--gc-sections")
 endif()
 
-set(CMAKE_C_FLAGS_INIT   "${_target_flags} -march=${RISCV_ARCH} -mabi=${RISCV_ABI} -mcmodel=medlow -ffreestanding -ffunction-sections -fdata-sections")
+set(_common_flags "${_target_flags} -march=${RISCV_ARCH} -mabi=${RISCV_ABI} -mcmodel=medlow -ffunction-sections -fdata-sections")
+set(CMAKE_C_FLAGS_INIT   "${_common_flags}")
+set(CMAKE_CXX_FLAGS_INIT "${_common_flags} -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-unwind-tables -fno-asynchronous-unwind-tables")
 set(CMAKE_ASM_FLAGS_INIT "${_target_flags} -march=${RISCV_ARCH} -mabi=${RISCV_ABI}")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${_link_flags}")
-set(CMAKE_C_STANDARD_LIBRARIES "${_libs}")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

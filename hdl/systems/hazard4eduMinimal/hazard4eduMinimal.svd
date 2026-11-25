@@ -3,7 +3,7 @@
   CMSIS-SVD description of the hazard4eduMinimal SoC peripherals, for register views in debuggers
   (e.g. the XPERIPHERALS view of Cortex-Debug / mcu-debug.peripheral-viewer).
 
-  The register and bit names match sw/hello/src/uart16550.h.
+  The register and bit names match sw/bsp/uart16550.h.
 
   Reading some UART registers has side effects (marked with readAction): reading RBR takes a byte
   out of the receive FIFO, reading IIR clears the transmitter-empty interrupt, and reading LSR clears

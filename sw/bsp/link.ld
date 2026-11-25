@@ -1,6 +1,7 @@
 /* Linker script for hazard4eduMinimal: everything runs from the 64 KiB SRAM at 0x0.
  * The reset vector is 0x0, so _start (crt0.S, section .text.init) is placed first.
- * The program is loaded over JTAG; there is no copy of .data from a load address. */
+ * The program is loaded over JTAG; there is no copy of .data from a load address.
+ * Shared by all projects in sw/ (C and C++). */
 
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
@@ -25,6 +26,16 @@ SECTIONS
     *(.srodata .srodata.*)
   } > RAM
 
+  /* Constructors, called by crt0.S before main: .preinit_array first, then .init_array sorted by
+   * priority (__attribute__((constructor(N))), [[gnu::init_priority(N)]]), then the unsorted rest */
+  .init_array : ALIGN(4) {
+    __init_array_start = .;
+    KEEP(*(.preinit_array))
+    KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
+    KEEP(*(.init_array .ctors))
+    __init_array_end = .;
+  } > RAM
+
   .data : ALIGN(4) {
     *(.data .data.*)
     /* gp points 2 KiB into the small data, so it reaches +-2 KiB with one instruction */
@@ -46,5 +57,6 @@ SECTIONS
 
   ASSERT(__heap_start + __stack_size <= __stack_top, "program and stack do not fit into the 64 KiB SRAM")
 
-  /DISCARD/ : { *(.comment) *(.note .note.*) *(.riscv.attributes.discard) }
+  /* Destructors are never called (see crt0.S) */
+  /DISCARD/ : { *(.comment) *(.note .note.*) *(.riscv.attributes.discard) *(.fini_array .fini_array.* .dtors .dtors.*) }
 }

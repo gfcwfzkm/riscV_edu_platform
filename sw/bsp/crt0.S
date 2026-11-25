@@ -1,7 +1,9 @@
 /* Start-up code for hazard4eduMinimal (RV32IM, program in SRAM at 0x0).
  *
  * The CPU starts at 0x0 after reset, and the debugger also starts programs there.
- * .data is already in place (the ELF is loaded over JTAG), so only .bss is cleared. */
+ * .data is already in place (the ELF is loaded over JTAG), so only .bss is cleared.
+ * Then the constructors in .preinit_array/.init_array run (C++ global objects, C functions with
+ * __attribute__((constructor))), then main. Destructors are never run: main is not expected to return. */
 
     .section .text.init, "ax"
     .globl _start
@@ -28,6 +30,16 @@ _start:
     addi    t0, t0, 4
     j       1b
 2:
+    /* Call the constructors: a table of function pointers from the linker script. s0/s1 are
+     * callee-saved, so they survive the calls */
+    la      s0, __init_array_start
+    la      s1, __init_array_end
+3:  bgeu    s0, s1, 4f
+    lw      t0, 0(s0)
+    jalr    t0
+    addi    s0, s0, 4
+    j       3b
+4:
     li      a0, 0                       /* argc */
     li      a1, 0                       /* argv */
     call    main

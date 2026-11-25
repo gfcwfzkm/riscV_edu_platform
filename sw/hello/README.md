@@ -1,17 +1,17 @@
 # hello – firmware example for hazard4eduMinimal
 
 Bare-metal hello world for the [hazard4eduMinimal](../../hdl/systems/hazard4eduMinimal) SoC on the GECKO5Education
-(Hazard3 RV32IM, 64 KiB SRAM at `0x0`, 16550 UART at `0x10000`, 50 MHz). It prints a greeting and `misa`, then
+(Hazard3 RV32IM, 64 KiB SRAM at `0x0`, 16550 UART at `0x10000`, 50 MHz by default, set with the CMake cache variable `F_CPU`). It prints a greeting and `misa`, then
 `tick <n>` about once per second, and echoes characters it receives.
 
 | File                      | Content                                                                         |
 |---------------------------|---------------------------------------------------------------------------------|
-| `cmake/riscv-rv32im.cmake`| toolchain file: `-march=rv32im_zicsr -mabi=ilp32`, GCC if found, otherwise clang |
-| `src/crt0.S`              | start-up: `gp`, `sp` = `0x10000`, `mtvec`, counters on, clear `.bss`, `main`    |
-| `src/link.ld`             | everything in the SRAM, `_start` at the reset vector `0x0`                      |
-| `src/uart16550.[ch]`      | polling UART driver, divisor = 50 MHz / (16 × baud) = 27 for 115200             |
 | `src/main.c`              | the program                                                                     |
+| `src/misa.[ch]`           | reads and decodes the `misa` CSR                                                |
 | `.vscode/`                | build tasks and two debug configurations (open this folder in VS Code)          |
+
+The toolchain file, the common build settings and the board support files (start-up code, linker script,
+UART driver) are shared with [`../hello_cpp`](../hello_cpp), see [`sw/README.md`](../README.md).
 
 **No compressed instructions:** the SoC is built without the C extension, because with it the core does not
 reach 50 MHz (see `hdl/systems/hazard4eduMinimal/README.md`). The toolchain file refuses a `-march` with `c`.
@@ -20,8 +20,10 @@ reach 50 MHz (see `hdl/systems/hazard4eduMinimal/README.md`). The toolchain file
 
 * **clang** (tested, clang 23): `clang --target=riscv32-unknown-elf` with `ld.lld`, `llvm-objcopy`, `llvm-objdump`,
   `llvm-size`. No libc or runtime library is used.
-* **GCC** (optional, not tested yet): any of `riscv32-unknown-elf-`, `riscv64-unknown-elf-`, `riscv-none-elf-`,
-  `riscv64-elf-`, `riscv32-elf-gcc` on `PATH`, or `-DRISCV_GCC_PREFIX=<prefix>`. It is linked against its `libgcc`.
+* **GCC** (optional; builds tested with Arch's `riscv64-elf-gcc` 16.2, which also builds RV32 code): any of
+  `riscv32-unknown-elf-`, `riscv64-unknown-elf-`, `riscv-none-elf-`, `riscv64-elf-`, `riscv32-elf-gcc` on
+  `PATH`, or `-DRISCV_GCC_PREFIX=<prefix>`. It is linked against its `libgcc`. GCC with newlib is also what
+  the `newlib_c`/`newlib_cpp` demos need.
 
 `RISCV_TOOLCHAIN=auto` (default) takes GCC if one is found, else clang. The presets `rv32im-clang` and
 `rv32im-gcc` force one of them.
@@ -32,6 +34,9 @@ reach 50 MHz (see `hdl/systems/hazard4eduMinimal/README.md`). The toolchain file
 cmake --preset rv32im          # or: cmake -B build   (the toolchain file is picked up by default)
 cmake --build build            # build/hello.elf, hello.bin, hello.lst, hello.map
 ```
+
+Optimised build (`-O2`) in `build-release/`: `cmake --preset rv32im-release`, `cmake --build build-release`,
+`cmake --build build-release --target run`; see [Debug and Release builds](../README.md#debug-and-release-builds).
 
 The FPGA must be configured with the SoC first (`make -C ../../hdl/systems/hazard4eduMinimal load`, or the VS Code
 task *load bitstream (FPGA SRAM)*). Then:

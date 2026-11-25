@@ -5,25 +5,80 @@
       "name": "rv32im",
       "displayName": "hazard4eduMinimal RV32IM (auto: GCC if found, else clang)",
       "binaryDir": "${sourceDir}/build",
-      "toolchainFile": "${sourceDir}/cmake/riscv-rv32im.cmake",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" }
+      "toolchainFile": "${sourceDir}/../cmake/riscv-rv32im.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     },
     {
       "name": "rv32im-clang",
       "inherits": "rv32im",
       "displayName": "hazard4eduMinimal RV32IM (clang + ld.lld)",
-      "cacheVariables": { "RISCV_TOOLCHAIN": "clang" }
+      "cacheVariables": {
+        "RISCV_TOOLCHAIN": "clang"
+      }
     },
     {
       "name": "rv32im-gcc",
       "inherits": "rv32im",
       "displayName": "hazard4eduMinimal RV32IM (riscv*-elf-gcc)",
-      "cacheVariables": { "RISCV_TOOLCHAIN": "gcc" }
+      "cacheVariables": {
+        "RISCV_TOOLCHAIN": "gcc"
+      }
+    },
+    {
+      "name": "rv32im-release",
+      "inherits": "rv32im",
+      "displayName": "hazard4eduMinimal RV32IM (auto: GCC if found, else clang), Release (-O2)",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "rv32im-clang-release",
+      "inherits": "rv32im-clang",
+      "displayName": "hazard4eduMinimal RV32IM (clang + ld.lld), Release (-O2)",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "rv32im-gcc-release",
+      "inherits": "rv32im-gcc",
+      "displayName": "hazard4eduMinimal RV32IM (riscv*-elf-gcc), Release (-O2)",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "rv32im", "configurePreset": "rv32im" },
-    { "name": "rv32im-clang", "configurePreset": "rv32im-clang" },
-    { "name": "rv32im-gcc", "configurePreset": "rv32im-gcc" }
+    {
+      "name": "rv32im",
+      "configurePreset": "rv32im"
+    },
+    {
+      "name": "rv32im-clang",
+      "configurePreset": "rv32im-clang"
+    },
+    {
+      "name": "rv32im-gcc",
+      "configurePreset": "rv32im-gcc"
+    },
+    {
+      "name": "rv32im-release",
+      "configurePreset": "rv32im-release"
+    },
+    {
+      "name": "rv32im-clang-release",
+      "configurePreset": "rv32im-clang-release"
+    },
+    {
+      "name": "rv32im-gcc-release",
+      "configurePreset": "rv32im-gcc-release"
+    }
   ]
 }

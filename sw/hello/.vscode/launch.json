@@ -64,6 +64,53 @@
       "overrideRestartCommands": ["monitor reset halt", "-target-download"],
       "overrideResetCommands": ["monitor reset halt", "-target-download"],
       "runToEntryPoint": "main"
+    },
+    // ---------------------------------------------------------------- Release (-O2, build-release/)
+    // The same two configurations for the optimised program. Debugging works, but the compiler has
+    // moved, merged and removed code: stepping jumps between lines, some variables show
+    // "<optimized out>", and small functions are inlined (no breakpoint in them, no own stack frame).
+    // stepi and the disassembly view always show what really runs.
+    {
+      "name": "Hazard3 Release (OpenOCD + gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build-release/hello.elf",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "targetArchitecture": "arm",
+      "preLaunchTask": "openocd (release)",
+      "postDebugTask": "stop openocd",
+      "customLaunchSetupCommands": [
+        { "text": "-gdb-set tdesc filename ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/hazard4eduMinimal-tdesc.xml" },
+        { "text": "-file-exec-and-symbols ${workspaceFolder}/build-release/hello.elf" },
+        { "text": "-target-select extended-remote localhost:3333" },
+        { "text": "monitor reset halt" },
+        { "text": "-target-download" }
+      ],
+      "launchCompleteCommand": "exec-continue",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "filterStderr": true
+    },
+    {
+      "name": "Hazard3 Release (Cortex-Debug)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build-release/hello.elf",
+      "configFiles": ["${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/gecko5-hazard3.cfg"],
+      "serverpath": "/opt/oss-cad-suite/bin/openocd",
+      "gdbPath": "gdb",
+      "debuggerArgs": ["-ex", "set tdesc filename ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/openocd/hazard4eduMinimal-tdesc.xml"],
+      "objdumpPath": "llvm-objdump",
+      "svdPath": "${workspaceFolder}/../../hdl/systems/hazard4eduMinimal/hazard4eduMinimal.svd",
+      "preLaunchTask": "build (release)",
+      "overrideLaunchCommands": ["monitor reset halt", "-target-download"],
+      "overrideRestartCommands": ["monitor reset halt", "-target-download"],
+      "overrideResetCommands": ["monitor reset halt", "-target-download"],
+      "runToEntryPoint": "main"
     }
   ]
 }

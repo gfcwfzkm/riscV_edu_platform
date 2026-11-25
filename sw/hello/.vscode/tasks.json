@@ -34,14 +34,16 @@
       // OpenOCD listens for gdb, then starts the debugger.
       "label": "openocd",
       "type": "shell",
-      "command": "make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal openocd",
+      // An OpenOCD left over from an earlier session (e.g. one that failed to start, so the
+      // postDebugTask never ran) holds the ports and the JTAG adapter: stop it first
+      "command": "pkill -TERM -f '[o]penocd -f openocd/gecko5-hazard3.cfg'; sleep 1; make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal openocd",
       "dependsOn": "build",
       "isBackground": true,
       "problemMatcher": {
         "owner": "openocd",
         "pattern": { "regexp": "^(Error):\\s+(.*)$", "severity": 1, "message": 2 },
         "background": {
-          "activeBegin": true,
+          "activeOnStart": true,
           "beginsPattern": "^Open On-Chip Debugger",
           "endsPattern": "Listening on port 3333 for gdb connections"
         }
@@ -61,6 +63,40 @@
       "type": "shell",
       "command": "pkill -TERM -f '[o]penocd -f openocd/gecko5-hazard3.cfg' || true",
       "problemMatcher": []
+    },
+    // ---------------------------------------------------------------- Release (-O2, build-release/)
+    {
+      "label": "build (release)",
+      "type": "shell",
+      "command": "test -f build-release/CMakeCache.txt || cmake --preset rv32im-release; cmake --build build-release",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "run on board (release, JTAG load + start)",
+      "type": "shell",
+      "command": "make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal run ELF=${workspaceFolder}/build-release/hello.elf",
+      "dependsOn": "build (release)",
+      "problemMatcher": []
+    },
+    {
+      // Same as "openocd", but builds the Release program first
+      "label": "openocd (release)",
+      "type": "shell",
+      // An OpenOCD left over from an earlier session (e.g. one that failed to start, so the
+      // postDebugTask never ran) holds the ports and the JTAG adapter: stop it first
+      "command": "pkill -TERM -f '[o]penocd -f openocd/gecko5-hazard3.cfg'; sleep 1; make -C ${workspaceFolder}/../../hdl/systems/hazard4eduMinimal openocd",
+      "dependsOn": "build (release)",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "openocd",
+        "pattern": { "regexp": "^(Error):\\s+(.*)$", "severity": 1, "message": 2 },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Open On-Chip Debugger",
+          "endsPattern": "Listening on port 3333 for gdb connections"
+        }
+      }
     }
   ]
 }

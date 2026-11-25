@@ -58,6 +58,6 @@ OpenOCD's description without the unreadable registers, with the same register n
 regenerates it from the running SoC (bitstream loaded, no other OpenOCD running).
 
 `hazard4eduMinimal.svd` describes the peripheral registers (CMSIS-SVD, currently UART0 at `0x00010000`, with
-the bit names of `sw/hello/src/uart16550.h`) for register views such as Cortex-Debug's XPERIPHERALS. Such a
+the bit names of `sw/bsp/uart16550.h`) for register views such as Cortex-Debug's XPERIPHERALS. Such a
 view reads every register at each stop of the debugger, and three UART registers change when read: RBR takes
 a byte out of the receive FIFO, IIR clears the transmitter-empty interrupt, LSR clears the error bits.
